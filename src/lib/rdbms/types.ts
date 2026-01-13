@@ -162,6 +162,7 @@ export type ASTNode =
 export interface QueryResult {
   success: boolean;
   message?: string;
+  error?: string;
   rows?: Record<string, unknown>[];
   rowCount?: number;
   columns?: string[];
