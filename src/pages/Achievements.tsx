@@ -1,37 +1,25 @@
-import { useGameStats, BADGES } from '@/hooks/useGameStats';
+import { useGameStats, BADGES, RANKS } from '@/hooks/useGameStats';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { 
   Trophy, Star, Zap, Target, Database, 
-  Table2, ArrowLeft, Lock, CheckCircle2, Flame
+  Table2, ArrowLeft, Lock, CheckCircle2, Flame, Crown
 } from 'lucide-react';
 import { FadeContent } from '@/components/animations/FadeContent';
 import { DecryptedText } from '@/components/animations/DecryptedText';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
-const ACHIEVEMENT_TIERS = [
-  { name: 'Novice', minLevel: 1, color: 'text-gray-400' },
-  { name: 'Apprentice', minLevel: 5, color: 'text-green-400' },
-  { name: 'Journeyman', minLevel: 10, color: 'text-blue-400' },
-  { name: 'Expert', minLevel: 20, color: 'text-purple-400' },
-  { name: 'Master', minLevel: 50, color: 'text-yellow-400' },
-];
-
 export default function Achievements() {
-  const { stats, checkBadge } = useGameStats();
+  const { stats, currentRank, isCoolingDown, cooldownMultiplier } = useGameStats();
 
-  const getTier = (level: number) => {
-    return ACHIEVEMENT_TIERS.reduce((acc, tier) => 
-      level >= tier.minLevel ? tier : acc
-    , ACHIEVEMENT_TIERS[0]);
-  };
-
-  const tier = getTier(stats.level);
   const allBadges = Object.entries(BADGES);
   const earnedCount = stats.badges.length;
   const totalCount = allBadges.length;
+
+  // Find next major milestones
+  const milestoneRanks = RANKS.filter(r => [4, 14, 17, 21, 23].includes(r.id)); // Sergeant, Captain, Colonel, General, CiC
 
   return (
     <div className="min-h-screen bg-background text-foreground matrix-bg">
@@ -50,7 +38,7 @@ export default function Achievements() {
                   <DecryptedText text="Achievements" speed={30} />
                 </h1>
                 <p className="font-mono text-[10px] text-muted-foreground">
-                  {earnedCount}/{totalCount} unlocked
+                  {earnedCount}/{totalCount} badges unlocked
                 </p>
               </div>
             </div>
@@ -66,16 +54,22 @@ export default function Achievements() {
             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/10" />
             <CardContent className="relative p-6">
               <div className="flex flex-col md:flex-row items-center gap-6">
-                {/* Level Circle */}
+                {/* Rank Circle */}
                 <div className="relative">
-                  <div className="w-32 h-32 rounded-full bg-gradient-to-br from-primary/30 to-accent/30 flex items-center justify-center border-4 border-primary/50 glow-border">
+                  <div className={`w-32 h-32 rounded-full flex items-center justify-center border-4 glow-border ${
+                    currentRank.id >= 23 
+                      ? 'bg-gradient-to-br from-yellow-500/30 to-amber-500/30 border-yellow-500/50' 
+                      : 'bg-gradient-to-br from-primary/30 to-accent/30 border-primary/50'
+                  }`}>
                     <div className="text-center">
-                      <span className="text-4xl font-bold text-primary glow-text">{stats.level}</span>
-                      <p className="text-xs text-muted-foreground">LEVEL</p>
+                      <span className="text-3xl">{currentRank.icon}</span>
+                      <p className="text-xs text-muted-foreground mt-1">RANK {currentRank.level}</p>
                     </div>
                   </div>
-                  <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-secondary text-xs font-bold ${tier.color}`}>
-                    {tier.name}
+                  <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-secondary text-xs font-bold ${
+                    currentRank.id >= 23 ? 'text-yellow-400' : 'text-primary'
+                  }`}>
+                    {currentRank.name}
                   </div>
                 </div>
 
@@ -104,24 +98,80 @@ export default function Achievements() {
                 </div>
               </div>
 
-              {/* XP Progress */}
+              {/* Cooldown Warning */}
+              {isCoolingDown && (
+                <div className="mt-4 p-3 rounded-lg bg-destructive/20 border border-destructive/30 text-center">
+                  <p className="text-sm font-mono text-destructive">
+                    ⚠️ Fast Collector Cooldown Active — Rewards reduced to {Math.round(cooldownMultiplier * 100)}%
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You've earned 1000+ XP in the last 24 hours. Wait for cooldown to reset.
+                  </p>
+                </div>
+              )}
+
+              {/* XP Progress to Next Rank */}
               <div className="mt-6">
                 <div className="flex justify-between text-xs font-mono mb-2">
-                  <span>Level {stats.level}</span>
-                  <span>{stats.xp} / {stats.xp + stats.xpToNextLevel} XP</span>
-                  <span>Level {stats.level + 1}</span>
+                  <span>{currentRank.icon} {currentRank.name}</span>
+                  <span>{stats.xp.toLocaleString()} XP</span>
+                  {currentRank.nextRankXp && (
+                    <span>{RANKS.find(r => r.minXp === currentRank.nextRankXp)?.name || 'Next Rank'}</span>
+                  )}
                 </div>
-                <Progress 
-                  value={((stats.xp % (stats.xp + stats.xpToNextLevel)) / (stats.xp + stats.xpToNextLevel)) * 100} 
-                  className="h-3"
-                />
+                <Progress value={currentRank.progress} className="h-3" />
+                {currentRank.nextRankXp && (
+                  <p className="text-xs text-muted-foreground text-center mt-2">
+                    {(currentRank.nextRankXp - stats.xp).toLocaleString()} XP to next rank
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </FadeContent>
+
+        {/* Rank Progress */}
+        <FadeContent blur duration={600} delay={200}>
+          <Card className="glass-card border-primary/30">
+            <CardHeader>
+              <CardTitle className="text-lg font-mono flex items-center gap-2">
+                <Crown className="w-5 h-5 text-yellow-400" />
+                Military Ranks (0 → 1,000,000 XP)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {RANKS.map((rank) => {
+                  const achieved = stats.xp >= rank.minXp;
+                  return (
+                    <div
+                      key={rank.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
+                        achieved 
+                          ? 'glass-card border border-primary/30' 
+                          : 'bg-secondary/20 opacity-60'
+                      }`}
+                    >
+                      <span className="text-xl">{rank.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-mono text-sm font-bold truncate ${achieved ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {rank.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {rank.minXp.toLocaleString()} XP
+                        </p>
+                      </div>
+                      {achieved && <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />}
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
         </FadeContent>
 
         {/* Badges Grid */}
-        <FadeContent blur duration={600} delay={200}>
+        <FadeContent blur duration={600} delay={400}>
           <Card className="glass-card border-primary/30">
             <CardHeader>
               <CardTitle className="text-lg font-mono flex items-center gap-2">
@@ -132,7 +182,7 @@ export default function Achievements() {
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {allBadges.map(([id, badge], index) => {
-                  const earned = checkBadge(id);
+                  const earned = stats.badges.includes(id);
                   return (
                     <FadeContent key={id} delay={index * 100} duration={400}>
                       <div
@@ -161,39 +211,6 @@ export default function Achievements() {
           </Card>
         </FadeContent>
 
-        {/* Tier Progress */}
-        <FadeContent blur duration={600} delay={400}>
-          <Card className="glass-card border-primary/30">
-            <CardHeader>
-              <CardTitle className="text-lg font-mono flex items-center gap-2">
-                <Star className="w-5 h-5 text-primary" />
-                Tier Progress
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between gap-2">
-                {ACHIEVEMENT_TIERS.map((t, index) => (
-                  <div key={t.name} className="flex-1 text-center">
-                    <div 
-                      className={`h-2 rounded-full mb-2 transition-all duration-500 ${
-                        stats.level >= t.minLevel 
-                          ? 'bg-primary' 
-                          : 'bg-secondary'
-                      }`}
-                    />
-                    <div className={`text-xs font-mono ${stats.level >= t.minLevel ? t.color : 'text-muted-foreground'}`}>
-                      {t.name}
-                    </div>
-                    <div className="text-[10px] text-muted-foreground">
-                      Lvl {t.minLevel}+
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </FadeContent>
-
         {/* Challenge Banner */}
         <FadeContent blur duration={600} delay={600}>
           <Card className="glass-card border-accent/30 bg-gradient-to-r from-accent/10 via-primary/10 to-accent/10">
@@ -203,7 +220,10 @@ export default function Achievements() {
               </h3>
               <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
                 This RDBMS was built as an entry for the Pesapal Junior Developer Challenge. 
-                Keep earning XP and unlocking badges to show your SQL mastery!
+                Keep earning XP and unlocking badges to reach Commander in Chief!
+              </p>
+              <p className="text-xs text-primary mt-2">
+                🎯 Goal: Reach 1,000,000 XP to unlock GOD Mode and the Commander in Chief avatar!
               </p>
               <div className="mt-4">
                 <Link to="/">
