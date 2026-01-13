@@ -34,6 +34,27 @@ const SAMPLE_QUERIES = [
     ],
   },
   {
+    category: '📈 Aggregations',
+    queries: [
+      { name: 'Count all users', sql: 'SELECT COUNT(*) AS total_users FROM users' },
+      { name: 'Count by condition', sql: "SELECT COUNT(*) AS adults FROM users WHERE age >= 18" },
+      { name: 'Sum of amounts', sql: 'SELECT SUM(amount) AS total_revenue FROM orders' },
+      { name: 'Average age', sql: 'SELECT AVG(age) AS average_age FROM users' },
+      { name: 'Min/Max values', sql: 'SELECT MIN(amount) AS cheapest, MAX(amount) AS most_expensive FROM orders' },
+    ],
+  },
+  {
+    category: '📦 Grouping & Sorting',
+    queries: [
+      { name: 'Group by product', sql: 'SELECT product, COUNT(*) AS order_count, SUM(amount) AS total FROM orders GROUP BY product' },
+      { name: 'Group with HAVING', sql: 'SELECT product, SUM(amount) AS total FROM orders GROUP BY product HAVING total > 1000' },
+      { name: 'Order ascending', sql: 'SELECT * FROM users ORDER BY age ASC' },
+      { name: 'Order descending', sql: 'SELECT * FROM orders ORDER BY amount DESC' },
+      { name: 'Multiple sorting', sql: 'SELECT * FROM users ORDER BY age DESC, name ASC' },
+      { name: 'Top 5 expensive', sql: 'SELECT * FROM orders ORDER BY amount DESC LIMIT 5' },
+    ],
+  },
+  {
     category: '🔧 Advanced',
     queries: [
       { name: 'Update record', sql: "UPDATE users SET age = 26 WHERE name = 'John Doe'" },
