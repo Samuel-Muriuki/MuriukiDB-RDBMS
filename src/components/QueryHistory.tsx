@@ -62,7 +62,7 @@ export const QueryHistory = ({ onSelectQuery }: QueryHistoryProps) => {
   const clearSearch = () => setSearchTerm('');
 
   return (
-    <Card className="glass-card border-primary/30 h-full flex flex-col relative">
+    <Card className="glass-card border-primary/30 h-full flex flex-col relative overflow-hidden">
       <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-mono flex items-center gap-2">
@@ -94,56 +94,58 @@ export const QueryHistory = ({ onSelectQuery }: QueryHistoryProps) => {
           )}
         </div>
       </CardHeader>
-      <CardContent className="flex-1 min-h-0 overflow-hidden p-0">
-        <ScrollArea className="h-full px-4 pb-4">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="font-mono text-sm">Loading history...</span>
-            </div>
-          ) : filteredHistory.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground font-mono text-sm">
-              {searchTerm ? 'No matching queries found' : 'No queries yet. Start exploring!'}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredHistory.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => onSelectQuery?.(item.query)}
-                  onMouseEnter={() => setHoveredQuery(item)}
-                  onMouseLeave={() => setHoveredQuery(null)}
-                  className="w-full text-left p-3 rounded-lg bg-secondary/30 hover:bg-secondary/60 transition-all duration-200 border border-transparent hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 group relative"
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-1.5">
-                      {item.success ? (
-                        <CheckCircle className="w-3.5 h-3.5 text-[hsl(var(--terminal-green))]" />
-                      ) : (
-                        <XCircle className="w-3.5 h-3.5 text-destructive" />
-                      )}
-                      <Badge variant={item.success ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">
-                        {item.success ? 'OK' : 'ERR'}
-                      </Badge>
+      <CardContent className="flex-1 overflow-hidden p-0">
+        <ScrollArea className="h-full max-h-[calc(100%-1rem)]">
+          <div className="px-4 pb-4">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="font-mono text-sm">Loading history...</span>
+              </div>
+            ) : filteredHistory.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground font-mono text-sm">
+                {searchTerm ? 'No matching queries found' : 'No queries yet. Start exploring!'}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredHistory.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => onSelectQuery?.(item.query)}
+                    onMouseEnter={() => setHoveredQuery(item)}
+                    onMouseLeave={() => setHoveredQuery(null)}
+                    className="w-full text-left p-3 rounded-lg bg-secondary/30 hover:bg-secondary/60 transition-all duration-200 border border-transparent hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 group relative"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-1.5">
+                        {item.success ? (
+                          <CheckCircle className="w-3.5 h-3.5 text-[hsl(var(--terminal-green))]" />
+                        ) : (
+                          <XCircle className="w-3.5 h-3.5 text-destructive" />
+                        )}
+                        <Badge variant={item.success ? 'default' : 'destructive'} className="text-[10px] px-1.5 py-0">
+                          {item.success ? 'OK' : 'ERR'}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {item.execution_time_ms && (
+                          <span className="flex items-center gap-0.5">
+                            <Clock className="w-3 h-3" />
+                            {item.execution_time_ms}ms
+                          </span>
+                        )}
+                        <span>{formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-                      {item.execution_time_ms && (
-                        <span className="flex items-center gap-0.5">
-                          <Clock className="w-3 h-3" />
-                          {item.execution_time_ms}ms
-                        </span>
-                      )}
-                      <span>{formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}</span>
-                    </div>
-                  </div>
-                  <pre 
-                    className="text-xs font-mono overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-primary transition-colors"
-                    dangerouslySetInnerHTML={{ __html: highlightSQL(item.query.slice(0, 100) + (item.query.length > 100 ? '...' : '')) }}
-                  />
-                </button>
-              ))}
-            </div>
-          )}
+                    <pre 
+                      className="text-xs font-mono overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-primary transition-colors"
+                      dangerouslySetInnerHTML={{ __html: highlightSQL(item.query.slice(0, 100) + (item.query.length > 100 ? '...' : '')) }}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </ScrollArea>
       </CardContent>
 
