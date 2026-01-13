@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { UserPlus, Trash2, Edit2, Search, Database, RefreshCw, Sparkles, X, CheckSquare, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { UserPlus, Trash2, Edit2, Search, Database, RefreshCw, Sparkles, X, CheckSquare, ChevronLeft, ChevronRight, Loader2, Download, FileJson, FileText } from 'lucide-react';
 import { useGameStats } from '@/hooks/useGameStats';
 import { FadeContent } from '@/components/animations/FadeContent';
 import {
@@ -15,6 +15,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Contact {
   id: number;
@@ -344,6 +350,50 @@ export const ContactManager = () => {
 
   const clearSearch = () => setSearchTerm('');
 
+  // Export functions
+  const exportAsCSV = () => {
+    if (allContacts.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+    
+    const headers = ['ID', 'Name', 'Email', 'Phone'];
+    const csvContent = [
+      headers.join(','),
+      ...allContacts.map(c => 
+        [c.id, `"${c.name}"`, `"${c.email || ''}"`, `"${c.phone || ''}"`].join(',')
+      )
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contacts_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success(`Exported ${allContacts.length} contacts as CSV`);
+  };
+
+  const exportAsJSON = () => {
+    if (allContacts.length === 0) {
+      toast.error('No data to export');
+      return;
+    }
+    
+    const jsonContent = JSON.stringify(allContacts, null, 2);
+    const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `contacts_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success(`Exported ${allContacts.length} contacts as JSON`);
+  };
+
   return (
     <div className="space-y-6">
       <FadeContent blur duration={400}>
@@ -388,6 +438,30 @@ export const ContactManager = () => {
                 <p>Remove all {allContacts.length} contacts from table</p>
               </TooltipContent>
             </Tooltip>
+            
+            {/* Export Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="font-mono text-sm gap-2 glass-button"
+                  disabled={allContacts.length === 0}
+                >
+                  <Download className="w-4 h-4" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="glass-card">
+                <DropdownMenuItem onClick={exportAsCSV} className="font-mono text-sm gap-2 cursor-pointer">
+                  <FileText className="w-4 h-4" />
+                  Export as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportAsJSON} className="font-mono text-sm gap-2 cursor-pointer">
+                  <FileJson className="w-4 h-4" />
+                  Export as JSON
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </FadeContent>

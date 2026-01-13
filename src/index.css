@@ -405,9 +405,18 @@
   color: hsl(var(--terminal-bright-green));
 }
 
-/* Smooth transitions */
-* {
-  transition-property: background-color, border-color, box-shadow;
+/* Smooth transitions - Exclude from theme toggle to prevent glitch */
+.glass-card,
+.glass-input,
+.glass-button,
+button,
+a {
+  transition-property: background-color, border-color, box-shadow, color, opacity, transform;
   transition-duration: 150ms;
   transition-timing-function: ease-out;
+}
+
+/* Prevent theme toggle glitch */
+html.transitioning * {
+  transition: none !important;
 }

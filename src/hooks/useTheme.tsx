@@ -20,9 +20,17 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const root = document.documentElement;
+    // Add transitioning class to prevent glitch
+    root.classList.add('transitioning');
     root.classList.remove('light', 'dark');
     root.classList.add(theme);
     localStorage.setItem('muriukidb-theme', theme);
+    // Remove transitioning class after a brief delay
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        root.classList.remove('transitioning');
+      });
+    });
   }, [theme]);
 
   const toggleTheme = () => {
