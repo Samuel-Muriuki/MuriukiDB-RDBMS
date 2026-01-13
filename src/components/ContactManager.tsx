@@ -10,6 +10,11 @@ import { toast } from 'sonner';
 import { UserPlus, Trash2, Edit2, Search, Database, RefreshCw, Sparkles, X, CheckSquare, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useGameStats } from '@/hooks/useGameStats';
 import { FadeContent } from '@/components/animations/FadeContent';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Contact {
   id: number;
@@ -29,10 +34,11 @@ const generateRandomContact = () => {
   const domain = DOMAINS[Math.floor(Math.random() * DOMAINS.length)];
   const phonePrefix = ['+254', '+1', '+44', '+91'][Math.floor(Math.random() * 4)];
   const phoneNum = Math.floor(100000000 + Math.random() * 900000000);
+  const uniqueId = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   
   return {
     name: `${firstName} ${lastName}`,
-    email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${Math.floor(Math.random() * 100)}@${domain}`,
+    email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${uniqueId}@${domain}`,
     phone: `${phonePrefix} ${phoneNum.toString().slice(0, 3)} ${phoneNum.toString().slice(3, 6)}${phoneNum.toString().slice(6)}`,
   };
 };
@@ -43,8 +49,12 @@ export const ContactManager = () => {
   const [executor] = useState(() => new QueryExecutor());
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false);
+  const [loadingSample, setLoadingSample] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [batchUpdating, setBatchUpdating] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -53,7 +63,6 @@ export const ContactManager = () => {
   const [batchEditMode, setBatchEditMode] = useState(false);
   const [batchFormData, setBatchFormData] = useState({ phone: '' });
   const [currentPage, setCurrentPage] = useState(1);
-  const [sampleEmails, setSampleEmails] = useState<string[]>([]);
   const { addXP, incrementRowsInserted } = useGameStats();
 
   const initializeTable = async () => {
@@ -123,8 +132,8 @@ export const ContactManager = () => {
   }, [searchTerm]);
 
   const loadSampleData = async () => {
+    setLoadingSample(true);
     let successCount = 0;
-    const newSampleEmails: string[] = [];
     
     for (let i = 0; i < 5; i++) {
       const contact = generateRandomContact();
@@ -135,7 +144,6 @@ export const ContactManager = () => {
         `);
         if (result.success) {
           successCount++;
-          newSampleEmails.push(contact.email);
         }
       } catch (error) {
         // Skip duplicates
@@ -143,7 +151,6 @@ export const ContactManager = () => {
     }
     
     if (successCount > 0) {
-      setSampleEmails(prev => [...prev, ...newSampleEmails]);
       toast.success(`Added ${successCount} sample contacts! +${successCount * 10} XP`);
       addXP(successCount * 10, 'sample_data');
       incrementRowsInserted(successCount);
@@ -151,34 +158,29 @@ export const ContactManager = () => {
       toast.info('Could not add sample data (possible duplicates)');
     }
     await fetchContacts();
+    setLoadingSample(false);
   };
 
   const removeSampleData = async () => {
-    if (sampleEmails.length === 0) {
-      toast.info('No sample data to remove');
+    if (allContacts.length === 0) {
+      toast.info('No data to remove');
       return;
     }
     
     setRemoving(true);
     try {
-      let removedCount = 0;
-      for (const email of sampleEmails) {
-        const result = await executor.execute(`DELETE FROM contacts WHERE email = '${email}'`);
-        if (result.success) {
-          removedCount++;
-        }
-      }
+      // Delete all contacts
+      const result = await executor.execute('DELETE FROM contacts WHERE 1=1');
       
-      if (removedCount > 0) {
-        toast.success(`Removed ${removedCount} sample contacts`);
-        setSampleEmails([]);
-        await fetchContacts();
+      if (result.success) {
+        toast.success(`Removed all ${allContacts.length} contacts`);
+        setAllContacts([]);
+        setSelectedIds(new Set());
       } else {
-        toast.info('Sample data already removed');
-        setSampleEmails([]);
+        toast.error('Failed to remove data');
       }
     } catch (error) {
-      toast.error('Failed to remove sample data');
+      toast.error('Failed to remove data');
     } finally {
       setRemoving(false);
     }
@@ -192,6 +194,7 @@ export const ContactManager = () => {
       return;
     }
 
+    setSaving(true);
     try {
       if (editingId !== null) {
         const result = await executor.execute(`
@@ -231,6 +234,8 @@ export const ContactManager = () => {
       setFormData({ name: '', email: '', phone: '' });
     } catch (error: any) {
       toast.error(error.message || 'Operation failed');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -240,6 +245,7 @@ export const ContactManager = () => {
   };
 
   const handleDelete = async (id: number) => {
+    setDeleting(true);
     try {
       const result = await executor.execute(`DELETE FROM contacts WHERE id = ${id}`);
       if (result.success) {
@@ -256,6 +262,8 @@ export const ContactManager = () => {
       }
     } catch (error: any) {
       toast.error(error.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -285,6 +293,7 @@ export const ContactManager = () => {
       return;
     }
 
+    setBatchUpdating(true);
     try {
       for (const id of selectedIds) {
         if (batchFormData.phone) {
@@ -305,6 +314,8 @@ export const ContactManager = () => {
       setBatchFormData({ phone: '' });
     } catch (error: any) {
       toast.error(error.message || 'Batch update failed');
+    } finally {
+      setBatchUpdating(false);
     }
   };
 
@@ -314,6 +325,7 @@ export const ContactManager = () => {
       return;
     }
 
+    setBatchDeleting(true);
     try {
       for (const id of selectedIds) {
         await executor.execute(`DELETE FROM contacts WHERE id = ${id}`);
@@ -325,6 +337,8 @@ export const ContactManager = () => {
       setSelectedIds(new Set());
     } catch (error: any) {
       toast.error(error.message || 'Batch delete failed');
+    } finally {
+      setBatchDeleting(false);
     }
   };
 
@@ -342,19 +356,38 @@ export const ContactManager = () => {
             </span>
           </div>
           <div className="flex gap-2">
-            <Button onClick={loadSampleData} variant="outline" className="font-mono text-sm gap-2 glass-button">
-              <Sparkles className="w-4 h-4" />
-              Load Sample
-            </Button>
-            <Button 
-              onClick={removeSampleData} 
-              variant="outline" 
-              className="font-mono text-sm gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
-              disabled={removing || sampleEmails.length === 0}
-            >
-              {removing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              Remove Sample {sampleEmails.length > 0 && `(${sampleEmails.length})`}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  onClick={loadSampleData} 
+                  variant="outline" 
+                  className="font-mono text-sm gap-2 glass-button"
+                  disabled={loadingSample}
+                >
+                  {loadingSample ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {loadingSample ? 'Adding...' : 'Load Sample'}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Add 5 random sample contacts</p>
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  onClick={removeSampleData} 
+                  variant="outline" 
+                  className="font-mono text-sm gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
+                  disabled={removing || allContacts.length === 0}
+                >
+                  {removing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                  {removing ? 'Removing...' : `Clear All${allContacts.length > 0 ? ` (${allContacts.length})` : ''}`}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Remove all {allContacts.length} contacts from table</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </FadeContent>
@@ -402,7 +435,8 @@ export const ContactManager = () => {
                 />
               </div>
               <div className="flex items-end gap-2">
-                <Button type="submit" className="font-mono text-sm flex-1">
+                <Button type="submit" className="font-mono text-sm flex-1" disabled={saving}>
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   {editingId !== null ? 'Update' : 'Add'}
                 </Button>
                 {editingId !== null && (
@@ -453,6 +487,7 @@ export const ContactManager = () => {
                 onClick={() => setBatchEditMode(!batchEditMode)} 
                 variant="outline" 
                 className="font-mono text-sm gap-2"
+                disabled={batchUpdating}
               >
                 <CheckSquare className="w-4 h-4" />
                 Edit {selectedIds.size} selected
@@ -461,14 +496,15 @@ export const ContactManager = () => {
                 onClick={handleBatchDelete} 
                 variant="destructive" 
                 className="font-mono text-sm gap-2"
+                disabled={batchDeleting}
               >
-                <Trash2 className="w-4 h-4" />
+                {batchDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
                 Delete selected
               </Button>
             </>
           )}
           
-          <Button onClick={fetchContacts} variant="ghost" size="icon" title="Refresh">
+          <Button onClick={fetchContacts} variant="ghost" size="icon" title="Refresh" disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
@@ -489,10 +525,11 @@ export const ContactManager = () => {
                     className="font-mono text-sm glass-input"
                   />
                 </div>
-                <Button onClick={handleBatchUpdate} className="font-mono">
+                <Button onClick={handleBatchUpdate} className="font-mono" disabled={batchUpdating}>
+                  {batchUpdating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   Apply to {selectedIds.size} contacts
                 </Button>
-                <Button variant="ghost" onClick={() => setBatchEditMode(false)}>
+                <Button variant="ghost" onClick={() => setBatchEditMode(false)} disabled={batchUpdating}>
                   Cancel
                 </Button>
               </div>
@@ -560,6 +597,7 @@ export const ContactManager = () => {
                             size="icon"
                             onClick={() => handleEdit(contact)}
                             className="h-7 w-7 text-muted-foreground hover:text-primary"
+                            disabled={saving}
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </Button>
@@ -568,6 +606,7 @@ export const ContactManager = () => {
                             size="icon"
                             onClick={() => handleDelete(contact.id)}
                             className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            disabled={deleting}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -580,11 +619,11 @@ export const ContactManager = () => {
             </Table>
           </div>
           
-          {/* Pagination */}
-          {totalPages > 1 && (
+          {/* Pagination - Always show when there are contacts */}
+          {filteredContacts.length > 0 && (
             <div className="flex items-center justify-between p-4 border-t border-border/30">
               <p className="text-xs font-mono text-muted-foreground">
-                Showing {((currentPage - 1) * ITEMS_PER_PAGE) + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredContacts.length)} of {filteredContacts.length}
+                Showing {Math.min(((currentPage - 1) * ITEMS_PER_PAGE) + 1, filteredContacts.length)}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredContacts.length)} of {filteredContacts.length}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -597,13 +636,13 @@ export const ContactManager = () => {
                   <ChevronLeft className="w-4 h-4" />
                 </Button>
                 <span className="text-xs font-mono text-muted-foreground">
-                  Page {currentPage} of {totalPages}
+                  Page {currentPage} of {Math.max(1, totalPages)}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
+                  disabled={currentPage >= totalPages}
                   className="font-mono"
                 >
                   <ChevronRight className="w-4 h-4" />
