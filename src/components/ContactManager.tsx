@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { QueryExecutor } from '@/lib/rdbms';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { UserPlus, Trash2, Edit2, Search, Database, RefreshCw, Sparkles, X, CheckSquare, ChevronLeft, ChevronRight, Loader2, Download, FileJson, FileText } from 'lucide-react';
+import { UserPlus, Trash2, Edit2, Search, Database, RefreshCw, Sparkles, X, CheckSquare, ChevronLeft, ChevronRight, Loader2, Download, FileJson, FileText, Upload } from 'lucide-react';
 import { useGameStats } from '@/hooks/useGameStats';
 import { FadeContent } from '@/components/animations/FadeContent';
 import {
@@ -69,6 +69,10 @@ export const ContactManager = () => {
   const [batchEditMode, setBatchEditMode] = useState(false);
   const [batchFormData, setBatchFormData] = useState({ phone: '' });
   const [currentPage, setCurrentPage] = useState(1);
+  const [focusedRowIndex, setFocusedRowIndex] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
   const { addXP, incrementRowsInserted } = useGameStats();
 
   const initializeTable = async () => {
@@ -394,6 +398,121 @@ export const ContactManager = () => {
     toast.success(`Exported ${allContacts.length} contacts as JSON`);
   };
 
+  // Import functions
+  const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const text = await file.text();
+      let contacts: { name: string; email?: string; phone?: string }[] = [];
+
+      if (file.name.endsWith('.json')) {
+        const data = JSON.parse(text);
+        contacts = Array.isArray(data) ? data : [data];
+      } else if (file.name.endsWith('.csv')) {
+        const lines = text.trim().split('\n');
+        const headers = lines[0].toLowerCase().split(',').map(h => h.trim().replace(/"/g, ''));
+        
+        const nameIdx = headers.findIndex(h => h === 'name');
+        const emailIdx = headers.findIndex(h => h === 'email');
+        const phoneIdx = headers.findIndex(h => h === 'phone');
+
+        if (nameIdx === -1) {
+          toast.error('CSV must have a "name" column');
+          return;
+        }
+
+        for (let i = 1; i < lines.length; i++) {
+          const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+          if (values[nameIdx]) {
+            contacts.push({
+              name: values[nameIdx],
+              email: emailIdx >= 0 ? values[emailIdx] : '',
+              phone: phoneIdx >= 0 ? values[phoneIdx] : '',
+            });
+          }
+        }
+      } else {
+        toast.error('Unsupported file format. Use CSV or JSON.');
+        return;
+      }
+
+      let successCount = 0;
+      for (const contact of contacts) {
+        if (!contact.name) continue;
+        try {
+          const result = await executor.execute(`
+            INSERT INTO contacts (name, email, phone) 
+            VALUES ('${contact.name.replace(/'/g, "''")}', '${(contact.email || '').replace(/'/g, "''")}', '${(contact.phone || '').replace(/'/g, "''")}')
+          `);
+          if (result.success) successCount++;
+        } catch (error) {
+          // Skip duplicates or errors
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Imported ${successCount} contacts! +${successCount * 10} XP`);
+        addXP(successCount * 10, 'import_data');
+        incrementRowsInserted(successCount);
+        await fetchContacts();
+      } else {
+        toast.info('No new contacts imported (possible duplicates)');
+      }
+    } catch (error: any) {
+      toast.error(`Import failed: ${error.message}`);
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (paginatedContacts.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setFocusedRowIndex(prev => 
+          prev === null ? 0 : Math.min(prev + 1, paginatedContacts.length - 1)
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setFocusedRowIndex(prev => 
+          prev === null ? paginatedContacts.length - 1 : Math.max(prev - 1, 0)
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (focusedRowIndex !== null && paginatedContacts[focusedRowIndex]) {
+          handleEdit(paginatedContacts[focusedRowIndex]);
+        }
+        break;
+      case 'Delete':
+      case 'Backspace':
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          if (focusedRowIndex !== null && paginatedContacts[focusedRowIndex]) {
+            handleDelete(paginatedContacts[focusedRowIndex].id);
+          }
+        }
+        break;
+      case ' ':
+        e.preventDefault();
+        if (focusedRowIndex !== null && paginatedContacts[focusedRowIndex]) {
+          toggleSelect(paginatedContacts[focusedRowIndex].id);
+        }
+        break;
+      case 'Escape':
+        setFocusedRowIndex(null);
+        break;
+    }
+  }, [paginatedContacts, focusedRowIndex]);
+
   return (
     <div className="space-y-6">
       <FadeContent blur duration={400}>
@@ -459,6 +578,43 @@ export const ContactManager = () => {
                 <DropdownMenuItem onClick={exportAsJSON} className="font-mono text-sm gap-2 cursor-pointer">
                   <FileJson className="w-4 h-4" />
                   Export as JSON
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Import Dropdown */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileImport}
+              accept=".csv,.json"
+              className="hidden"
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  className="font-mono text-sm gap-2 glass-button"
+                  disabled={importing}
+                >
+                  {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  {importing ? 'Importing...' : 'Import'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="glass-card">
+                <DropdownMenuItem 
+                  onClick={() => fileInputRef.current?.click()} 
+                  className="font-mono text-sm gap-2 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4" />
+                  Import from CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={() => fileInputRef.current?.click()} 
+                  className="font-mono text-sm gap-2 cursor-pointer"
+                >
+                  <FileJson className="w-4 h-4" />
+                  Import from JSON
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -615,7 +771,16 @@ export const ContactManager = () => {
       {/* Contacts Table */}
       <FadeContent blur duration={400} delay={300}>
         <Card className="glass-card border-primary/30 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div 
+            ref={tableRef}
+            className="overflow-x-auto focus:outline-none" 
+            tabIndex={0}
+            onKeyDown={handleKeyDown}
+            onFocus={() => focusedRowIndex === null && paginatedContacts.length > 0 && setFocusedRowIndex(0)}
+          >
+            <p className="text-[10px] text-muted-foreground font-mono px-4 pt-2">
+              ↑↓ Navigate • Enter Edit • Space Select • Ctrl+Del Delete
+            </p>
             <Table>
               <TableHeader>
                 <TableRow className="border-border/50 hover:bg-transparent">
@@ -649,10 +814,14 @@ export const ContactManager = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedContacts.map((contact) => (
+                  paginatedContacts.map((contact, index) => (
                     <TableRow 
                       key={contact.id} 
-                      className={`border-border/30 hover:bg-primary/5 transition-colors ${selectedIds.has(contact.id) ? 'bg-primary/10' : ''}`}
+                      className={`border-border/30 transition-colors cursor-pointer ${
+                        selectedIds.has(contact.id) ? 'bg-primary/10' : ''
+                      } ${focusedRowIndex === index ? 'ring-2 ring-primary ring-inset bg-primary/5' : 'hover:bg-primary/5'}`}
+                      onClick={() => setFocusedRowIndex(index)}
+                      onDoubleClick={() => handleEdit(contact)}
                     >
                       <TableCell>
                         <Checkbox
