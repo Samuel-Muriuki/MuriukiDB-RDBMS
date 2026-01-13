@@ -34,10 +34,23 @@ const SAMPLE_QUERIES = [
     ],
   },
   {
+    category: '🔍 DISTINCT & LIKE',
+    queries: [
+      { name: 'Distinct values', sql: 'SELECT DISTINCT product FROM orders' },
+      { name: 'Distinct with column', sql: 'SELECT DISTINCT name, email FROM users' },
+      { name: 'LIKE starts with', sql: "SELECT * FROM users WHERE name LIKE 'John%'" },
+      { name: 'LIKE ends with', sql: "SELECT * FROM users WHERE email LIKE '%@gmail.com'" },
+      { name: 'LIKE contains', sql: "SELECT * FROM contacts WHERE name LIKE '%Smith%'" },
+      { name: 'LIKE single char', sql: "SELECT * FROM users WHERE name LIKE 'J_hn'" },
+      { name: 'NOT LIKE pattern', sql: "SELECT * FROM users WHERE email NOT LIKE '%@test.com'" },
+    ],
+  },
+  {
     category: '📈 Aggregations',
     queries: [
       { name: 'Count all users', sql: 'SELECT COUNT(*) AS total_users FROM users' },
       { name: 'Count by condition', sql: "SELECT COUNT(*) AS adults FROM users WHERE age >= 18" },
+      { name: 'Count distinct', sql: 'SELECT COUNT(DISTINCT product) AS unique_products FROM orders' },
       { name: 'Sum of amounts', sql: 'SELECT SUM(amount) AS total_revenue FROM orders' },
       { name: 'Average age', sql: 'SELECT AVG(age) AS average_age FROM users' },
       { name: 'Min/Max values', sql: 'SELECT MIN(amount) AS cheapest, MAX(amount) AS most_expensive FROM orders' },
