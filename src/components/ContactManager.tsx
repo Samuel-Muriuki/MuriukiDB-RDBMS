@@ -77,19 +77,22 @@ export const ContactManager = () => {
 
   const initializeTable = async () => {
     try {
-      await executor.execute(`
+      const result = await executor.execute(`
         CREATE TABLE contacts (
           name TEXT NOT NULL,
           email TEXT UNIQUE,
           phone TEXT
         )
       `);
-      await executor.execute('CREATE INDEX idx_contacts_email ON contacts (email)');
-      setInitialized(true);
-      toast.success('Contacts table initialized');
+      if (result.success) {
+        await executor.execute('CREATE INDEX idx_contacts_email ON contacts (email)');
+        setInitialized(true);
+        toast.success('Contacts table initialized');
+      }
     } catch (error: any) {
       if (error.message?.includes('already exists')) {
         setInitialized(true);
+        // Don't show toast for existing table - prevents double notification
       } else {
         console.error('Init error:', error);
       }

@@ -28,7 +28,7 @@ export function Leaderboard() {
   const [nickname, setNickname] = useState('');
   const [isRegistered, setIsRegistered] = useState(false);
   const [myRank, setMyRank] = useState<number | null>(null);
-  const { stats } = useGameStats();
+  const { stats, currentRank } = useGameStats();
   const { userInfo } = useUserFingerprint();
 
   const fetchLeaderboard = async () => {
@@ -97,7 +97,7 @@ export function Leaderboard() {
           .update({
             nickname: nickname.trim(),
             xp: stats.xp,
-            level: stats.level,
+            level: currentRank.level,
             queries_executed: stats.queriesExecuted,
             tables_created: stats.tablesCreated,
             rows_inserted: stats.rowsInserted,
@@ -128,7 +128,7 @@ export function Leaderboard() {
           .insert({
             nickname: nickname.trim(),
             xp: stats.xp,
-            level: stats.level,
+            level: currentRank.level,
             queries_executed: stats.queriesExecuted,
             tables_created: stats.tablesCreated,
             rows_inserted: stats.rowsInserted,
