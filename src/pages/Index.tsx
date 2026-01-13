@@ -215,7 +215,7 @@ const Index = () => {
               </TabButton>
             </div>
             
-            <div className="flex-1 h-[calc(100vh-200px)]">
+            <div className="h-[calc(100vh-220px)] min-h-[400px]">
               {sidePanel === 'samples' && <SampleQueries onSelectQuery={handleSelectQuery} />}
               {sidePanel === 'history' && <QueryHistory onSelectQuery={handleSelectQuery} />}
               {sidePanel === 'leaderboard' && <Leaderboard />}

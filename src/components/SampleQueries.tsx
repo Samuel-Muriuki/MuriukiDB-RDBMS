@@ -12,6 +12,7 @@ const SAMPLE_QUERIES = [
     queries: [
       { name: 'Show all tables', sql: 'SHOW TABLES' },
       { name: 'Create users table', sql: 'CREATE TABLE users (name TEXT NOT NULL, email TEXT UNIQUE, age INTEGER)' },
+      { name: 'Create orders table', sql: 'CREATE TABLE orders (user_id INTEGER, product TEXT, amount INTEGER, order_date TEXT)' },
       { name: 'Describe table', sql: 'DESCRIBE contacts' },
     ],
   },
@@ -19,8 +20,17 @@ const SAMPLE_QUERIES = [
     category: '📝 Data',
     queries: [
       { name: 'Insert a user', sql: "INSERT INTO users (name, email, age) VALUES ('John Doe', 'john@example.com', 25)" },
+      { name: 'Insert an order', sql: "INSERT INTO orders (user_id, product, amount, order_date) VALUES (1, 'Laptop', 1200, '2026-01-13')" },
       { name: 'Select all', sql: 'SELECT * FROM users' },
       { name: 'Select with filter', sql: "SELECT name, email FROM users WHERE age > 20" },
+    ],
+  },
+  {
+    category: '🔗 Joins',
+    queries: [
+      { name: 'Inner Join', sql: 'SELECT users.name, orders.product, orders.amount FROM users INNER JOIN orders ON users.id = orders.user_id' },
+      { name: 'Left Join', sql: 'SELECT users.name, orders.product FROM users LEFT JOIN orders ON users.id = orders.user_id' },
+      { name: 'Join with filter', sql: "SELECT u.name, o.product FROM users u INNER JOIN orders o ON u.id = o.user_id WHERE o.amount > 500" },
     ],
   },
   {

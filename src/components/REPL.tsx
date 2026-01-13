@@ -42,6 +42,43 @@ export function REPL({ initialQuery, onQueryChange }: REPLProps) {
     }
   }, [initialQuery]);
 
+  // Keyboard shortcuts listener
+  useEffect(() => {
+    const handleKeyboardShortcuts = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + Enter to execute
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        executeQuery();
+        return;
+      }
+      
+      // Ctrl/Cmd + L to clear history
+      if ((e.ctrlKey || e.metaKey) && e.key === 'l') {
+        e.preventDefault();
+        setHistory([]);
+        toast.success('History cleared');
+        return;
+      }
+      
+      // Ctrl/Cmd + K to focus input
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        return;
+      }
+      
+      // Escape to clear input
+      if (e.key === 'Escape') {
+        setInput('');
+        onQueryChange?.('');
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyboardShortcuts);
+    return () => window.removeEventListener('keydown', handleKeyboardShortcuts);
+  }, [input, isExecuting]);
+
   const executeQuery = useCallback(async () => {
     const query = input.trim();
     if (!query || isExecuting) return;
@@ -184,6 +221,13 @@ export function REPL({ initialQuery, onQueryChange }: REPLProps) {
           <p className="mt-2">Welcome to the Relational Database Management System</p>
           <p className="text-xs">Type SQL commands and press Enter to execute. Use ↑/↓ to navigate history.</p>
           <p className="text-xs mt-1 text-[hsl(var(--terminal-yellow))]">💡 Earn XP and unlock badges by executing queries!</p>
+          <div className="text-xs mt-2 text-muted-foreground/70 border-t border-border/30 pt-2">
+            <span className="text-[hsl(var(--terminal-cyan))]">Shortcuts:</span>{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-secondary text-[10px]">Ctrl+Enter</kbd> Execute •{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-secondary text-[10px]">Ctrl+L</kbd> Clear •{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-secondary text-[10px]">Ctrl+K</kbd> Focus •{' '}
+            <kbd className="px-1.5 py-0.5 rounded bg-secondary text-[10px]">Esc</kbd> Clear input
+          </div>
         </div>
 
         {/* Query history */}
