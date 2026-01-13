@@ -194,8 +194,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+  // Return safe defaults if outside provider (during HMR or portals)
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    return {
+      user: null,
+      session: null,
+      loading: true,
+      signUp: async () => ({ error: 'Auth not initialized' }),
+      signIn: async () => ({ error: 'Auth not initialized' }),
+      signOut: async () => {},
+      resetPassword: async () => ({ error: 'Auth not initialized' }),
+      verifyRecoveryCode: async () => ({ error: 'Auth not initialized' }),
+    } as AuthContextType;
   }
   return context;
 };
