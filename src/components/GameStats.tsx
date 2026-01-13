@@ -1,25 +1,50 @@
 import { useGameStats, BADGES } from '@/hooks/useGameStats';
 import { Progress } from '@/components/ui/progress';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Zap, Trophy, Target, Flame } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Zap, Trophy, Target, Flame, AlertTriangle } from 'lucide-react';
 
 export const GameStats = () => {
-  const { stats } = useGameStats();
-  
-  const xpProgress = ((stats.xpToNextLevel - (stats.xpToNextLevel - (stats.xp % stats.xpToNextLevel))) / stats.xpToNextLevel) * 100;
+  const { stats, currentRank, isCoolingDown, cooldownMultiplier } = useGameStats();
 
   return (
     <div className="flex items-center gap-4">
-      {/* Level & XP */}
+      {/* Rank & XP */}
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 px-2 py-1 rounded bg-primary/20 border border-primary/30">
-          <Trophy className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs font-mono font-bold text-primary">LVL {stats.level}</span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-1 px-2 py-1 rounded bg-primary/20 border border-primary/30 cursor-default">
+              <Trophy className="w-3.5 h-3.5 text-primary" />
+              <span className="text-xs font-mono font-bold text-primary">LVL {currentRank.level}</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="font-bold">{currentRank.icon} {currentRank.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {stats.xp.toLocaleString()} XP
+              {currentRank.nextRankXp && ` / ${currentRank.nextRankXp.toLocaleString()} XP`}
+            </p>
+          </TooltipContent>
+        </Tooltip>
         <div className="w-20 hidden sm:block">
-          <Progress value={xpProgress} className="h-1.5" />
+          <Progress value={currentRank.progress} className="h-1.5" />
         </div>
       </div>
+
+      {/* Cooldown Indicator */}
+      {isCoolingDown && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-destructive/20 border border-destructive/30">
+              <AlertTriangle className="w-3 h-3 text-destructive" />
+              <span className="text-[10px] font-mono text-destructive">{Math.round(cooldownMultiplier * 100)}%</span>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="font-bold">⚠️ Fast Collector Cooldown</p>
+            <p className="text-xs text-muted-foreground">You've earned 1000+ XP in 24hrs. Rewards reduced until cooldown ends.</p>
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Stats */}
       <div className="hidden md:flex items-center gap-3 text-xs font-mono text-muted-foreground">
@@ -40,25 +65,23 @@ export const GameStats = () => {
       </div>
 
       {/* Badges */}
-      <TooltipProvider>
-        <div className="flex items-center gap-1">
-          {stats.badges.slice(-4).map((badgeId) => {
-            const badge = BADGES[badgeId as keyof typeof BADGES];
-            if (!badge) return null;
-            return (
-              <Tooltip key={badgeId}>
-                <TooltipTrigger asChild>
-                  <span className="text-sm cursor-default animate-fade-in">{badge.icon}</span>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p className="font-bold">{badge.name}</p>
-                  <p className="text-xs text-muted-foreground">{badge.desc}</p>
-                </TooltipContent>
-              </Tooltip>
-            );
-          })}
-        </div>
-      </TooltipProvider>
+      <div className="flex items-center gap-1">
+        {stats.badges.slice(-4).map((badgeId) => {
+          const badge = BADGES[badgeId as keyof typeof BADGES];
+          if (!badge) return null;
+          return (
+            <Tooltip key={badgeId}>
+              <TooltipTrigger asChild>
+                <span className="text-sm cursor-default animate-fade-in">{badge.icon}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="font-bold">{badge.name}</p>
+                <p className="text-xs text-muted-foreground">{badge.desc}</p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
     </div>
   );
 };
