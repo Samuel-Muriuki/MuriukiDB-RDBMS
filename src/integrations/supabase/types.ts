@@ -14,7 +14,92 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      rdbms_query_history: {
+        Row: {
+          created_at: string
+          execution_time_ms: number | null
+          id: string
+          query: string
+          result: Json | null
+          success: boolean
+        }
+        Insert: {
+          created_at?: string
+          execution_time_ms?: number | null
+          id?: string
+          query: string
+          result?: Json | null
+          success?: boolean
+        }
+        Update: {
+          created_at?: string
+          execution_time_ms?: number | null
+          id?: string
+          query?: string
+          result?: Json | null
+          success?: boolean
+        }
+        Relationships: []
+      }
+      rdbms_rows: {
+        Row: {
+          created_at: string
+          data: Json
+          id: string
+          table_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          data?: Json
+          id?: string
+          table_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          data?: Json
+          id?: string
+          table_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rdbms_rows_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "rdbms_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rdbms_tables: {
+        Row: {
+          columns: Json
+          created_at: string
+          id: string
+          indexes: Json
+          table_name: string
+          updated_at: string
+        }
+        Insert: {
+          columns?: Json
+          created_at?: string
+          id?: string
+          indexes?: Json
+          table_name: string
+          updated_at?: string
+        }
+        Update: {
+          columns?: Json
+          created_at?: string
+          id?: string
+          indexes?: Json
+          table_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
