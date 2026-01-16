@@ -400,7 +400,7 @@ const Index = () => {
                 <SheetTitle className="font-mono text-primary">Your Profile</SheetTitle>
                 <SheetDescription>Manage your account</SheetDescription>
               </SheetHeader>
-              <div className="mt-4 h-[calc(100%-4rem)] overflow-auto scrollbar-thin">
+              <div className="mt-4 h-[calc(100%-4rem)] overflow-hidden">
                 <ProfilePanel />
               </div>
             </SheetContent>
