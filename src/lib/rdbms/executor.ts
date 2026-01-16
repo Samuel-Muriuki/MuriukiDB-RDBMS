@@ -7,7 +7,6 @@ import {
   ASTNode,
   QueryResult,
   TableSchema,
-  Row,
   ColumnDefinition,
   WhereClause,
   CreateTableNode,
@@ -20,6 +19,7 @@ import {
   ShowTablesNode,
   DescribeNode,
   IndexDefinition,
+  SelectColumn,
 } from './types';
 import { Json } from '@/integrations/supabase/types';
 
@@ -30,7 +30,6 @@ const indexCache: Map<string, BTree<unknown>> = new Map();
 const SESSION_KEY = 'muriukidb-session-id';
 
 function getOrCreateSessionId(): string {
-  // Use sessionStorage to track the current session
   let sessionId = sessionStorage.getItem(SESSION_KEY);
   if (!sessionId) {
     sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -57,7 +56,7 @@ const RESOURCE_LIMITS = {
   MAX_QUERIES_PER_MINUTE: 30,
 };
 
-// Rate limiting state (client-side fallback + server-side enforcement)
+// Rate limiting state
 let queryCount = 0;
 let windowStart = Date.now();
 let serverRateLimitRemaining = 30;
@@ -99,7 +98,6 @@ async function checkServerRateLimit(): Promise<{ allowed: boolean; remaining: nu
     isServerRateLimitActive = true;
     return { allowed: true, remaining: data.remaining || 30 };
   } catch (error) {
-    // Fallback to client-side rate limiting if server is unavailable
     console.warn('Server rate limit check failed, using client-side fallback');
     isServerRateLimitActive = false;
     return { allowed: true, remaining: RESOURCE_LIMITS.MAX_QUERIES_PER_MINUTE - queryCount };
@@ -114,14 +112,12 @@ export class QueryExecutor {
   }
 
   private async checkRateLimit(): Promise<void> {
-    // First check server-side rate limit
     const serverResult = await checkServerRateLimit();
     
     if (!serverResult.allowed) {
       throw new Error(`Rate limit exceeded. Please wait ${serverResult.retryAfter} seconds before trying again.`);
     }
 
-    // Also maintain client-side rate limiting as additional layer
     const now = Date.now();
     if (now - windowStart > 60000) {
       queryCount = 0;
@@ -139,12 +135,10 @@ export class QueryExecutor {
     const startTime = performance.now();
     
     try {
-      // Check rate limit (now async with server-side check)
       await this.checkRateLimit();
       
       const ast = this.parser.parse(sql);
       
-      // Execute with timeout
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error(`Query timeout (${RESOURCE_LIMITS.QUERY_TIMEOUT_MS / 1000}s limit)`)), RESOURCE_LIMITS.QUERY_TIMEOUT_MS)
       );
@@ -156,7 +150,6 @@ export class QueryExecutor {
       
       result.executionTime = Math.round(performance.now() - startTime);
       
-      // Log query to history
       await this.logQuery(sql, result);
       
       return result;
@@ -201,7 +194,6 @@ export class QueryExecutor {
   private async executeCreateTable(node: CreateTableNode): Promise<QueryResult> {
     const { userId, sessionId } = await getUserContext();
     
-    // Check table limit to prevent resource exhaustion
     const { count: tableCount } = await supabase
       .from('rdbms_tables')
       .select('*', { count: 'exact', head: true });
@@ -210,7 +202,6 @@ export class QueryExecutor {
       throw new Error(`Maximum table limit reached (${RESOURCE_LIMITS.MAX_TABLES} tables). Drop unused tables first.`);
     }
 
-    // Check if table exists (for this user's context)
     const { data: existing } = await supabase
       .from('rdbms_tables')
       .select('id')
@@ -224,10 +215,8 @@ export class QueryExecutor {
       throw new Error(`Table ${node.tableName} already exists`);
     }
 
-    // Validate columns
     const hasPrimaryKey = node.columns.some(c => c.primaryKey);
     if (!hasPrimaryKey) {
-      // Add implicit id column
       node.columns.unshift({
         name: 'id',
         type: 'INTEGER',
@@ -237,7 +226,6 @@ export class QueryExecutor {
       });
     }
 
-    // Create table with user context for RLS
     const { error } = await supabase.from('rdbms_tables').insert({
       table_name: node.tableName,
       columns: node.columns as unknown as Json,
@@ -268,7 +256,6 @@ export class QueryExecutor {
       throw new Error(`Table ${node.tableName} does not exist`);
     }
 
-    // Delete table (cascade will delete rows)
     const { error } = await supabase
       .from('rdbms_tables')
       .delete()
@@ -276,7 +263,6 @@ export class QueryExecutor {
 
     if (error) throw new Error(error.message);
 
-    // Clear any cached indexes
     for (const key of indexCache.keys()) {
       if (key.startsWith(`${node.tableName}:`)) {
         indexCache.delete(key);
@@ -293,7 +279,6 @@ export class QueryExecutor {
     const table = await this.getTable(node.tableName);
     const columns = table.columns as ColumnDefinition[];
 
-    // Check row limit per table to prevent storage exhaustion
     const { count: rowCount } = await supabase
       .from('rdbms_rows')
       .select('*', { count: 'exact', head: true })
@@ -304,7 +289,6 @@ export class QueryExecutor {
       throw new Error(`Maximum row limit reached for this table (${RESOURCE_LIMITS.MAX_ROWS_PER_TABLE} rows). Delete some rows first.`);
     }
     
-    // Get next auto-increment value
     let autoIncrementValue = 1;
     const autoIncrementCol = columns.find(c => c.autoIncrement);
     if (autoIncrementCol) {
@@ -328,12 +312,10 @@ export class QueryExecutor {
       const rowData: Record<string, unknown> = {};
       const insertColumns = node.columns || columns.map(c => c.name);
 
-      // Validate column count
       if (values.length !== insertColumns.length) {
         throw new Error(`Column count doesn't match value count`);
       }
 
-      // Build row data
       for (let i = 0; i < insertColumns.length; i++) {
         const colName = insertColumns[i];
         const colDef = columns.find(c => c.name === colName);
@@ -346,12 +328,10 @@ export class QueryExecutor {
         rowData[colName] = this.validateAndConvertValue(value, colDef);
       }
 
-      // Handle auto-increment
       if (autoIncrementCol && !(autoIncrementCol.name in rowData)) {
         rowData[autoIncrementCol.name] = autoIncrementValue++;
       }
 
-      // Check NOT NULL constraints
       for (const col of columns) {
         if (col.notNull && !col.autoIncrement && !(col.name in rowData)) {
           if (col.defaultValue !== undefined) {
@@ -362,7 +342,6 @@ export class QueryExecutor {
         }
       }
 
-      // Check UNIQUE constraints
       for (const col of columns) {
         if (col.unique || col.primaryKey) {
           const { data: existing } = await supabase
@@ -409,7 +388,7 @@ export class QueryExecutor {
 
   private async executeSelect(node: SelectNode): Promise<QueryResult> {
     const table = await this.getTable(node.tableName);
-    const columns = table.columns as ColumnDefinition[];
+    const tableColumns = table.columns as ColumnDefinition[];
 
     // Get all rows for main table
     let { data: rows } = await supabase
@@ -433,23 +412,22 @@ export class QueryExecutor {
         const newRows: typeof rows = [];
         const [leftTable, leftCol] = join.on.leftColumn.includes('.')
           ? join.on.leftColumn.split('.')
-          : [node.tableName, join.on.leftColumn];
+          : [node.tableAlias || node.tableName, join.on.leftColumn];
         const [rightTable, rightCol] = join.on.rightColumn.includes('.')
           ? join.on.rightColumn.split('.')
-          : [join.tableName, join.on.rightColumn];
+          : [join.alias || join.tableName, join.on.rightColumn];
 
         for (const row of rows) {
           const rowData = row.data as Record<string, unknown>;
-          const leftValue = leftTable === node.tableName ? rowData[leftCol] : rowData[`${leftTable}.${leftCol}`];
+          const leftValue = leftTable === (node.tableAlias || node.tableName) ? rowData[leftCol] : rowData[`${leftTable}.${leftCol}`];
           
           let matched = false;
           for (const joinRow of joinRows) {
             const joinData = joinRow.data as Record<string, unknown>;
-            const rightValue = rightTable === join.tableName ? joinData[rightCol] : joinData[`${rightTable}.${rightCol}`];
+            const rightValue = rightTable === (join.alias || join.tableName) ? joinData[rightCol] : joinData[`${rightTable}.${rightCol}`];
 
             if (leftValue === rightValue) {
               matched = true;
-              // Merge row data with prefixes
               const mergedData: Record<string, unknown> = { ...rowData };
               for (const [key, value] of Object.entries(joinData)) {
                 mergedData[`${join.alias || join.tableName}.${key}`] = value;
@@ -458,7 +436,6 @@ export class QueryExecutor {
             }
           }
 
-          // For LEFT JOIN, include unmatched rows
           if (!matched && join.type === 'LEFT') {
             const nullData: Record<string, unknown> = { ...rowData };
             const joinCols = joinTable.columns as ColumnDefinition[];
@@ -478,60 +455,164 @@ export class QueryExecutor {
       rows = rows.filter(row => this.evaluateWhere(row.data as Record<string, unknown>, node.where!));
     }
 
-    // Apply ORDER BY
-    if (node.orderBy && node.orderBy.length > 0) {
-      rows.sort((a, b) => {
-        const aData = a.data as Record<string, unknown>;
-        const bData = b.data as Record<string, unknown>;
-        
-        for (const order of node.orderBy!) {
-          const aVal = aData[order.column];
-          const bVal = bData[order.column];
-          
-          let cmp = 0;
-          if (aVal < bVal) cmp = -1;
-          else if (aVal > bVal) cmp = 1;
-          
-          if (cmp !== 0) {
-            return order.direction === 'DESC' ? -cmp : cmp;
+    // Check if we have aggregates or GROUP BY
+    const hasAggregates = node.columns !== '*' && node.columns.some(c => c.aggregate);
+    const hasGroupBy = node.groupBy && node.groupBy.length > 0;
+
+    let resultRows: Record<string, unknown>[];
+    let resultColumns: string[];
+
+    if (hasAggregates || hasGroupBy) {
+      // Handle aggregates with or without GROUP BY
+      const grouped = this.groupRows(
+        rows.map(r => r.data as Record<string, unknown>),
+        node.groupBy || []
+      );
+
+      resultRows = [];
+      for (const [, groupRows] of grouped) {
+        const resultRow: Record<string, unknown> = {};
+
+        // Add group by columns
+        if (node.groupBy && node.groupBy.length > 0 && groupRows.length > 0) {
+          for (const col of node.groupBy) {
+            resultRow[col] = groupRows[0][col];
           }
         }
-        return 0;
-      });
-    }
 
-    // Apply OFFSET
-    if (node.offset) {
-      rows = rows.slice(node.offset);
-    }
-
-    // Apply LIMIT
-    if (node.limit) {
-      rows = rows.slice(0, node.limit);
-    }
-
-    // Project columns
-    let resultColumns: string[];
-    if (node.columns === '*') {
-      resultColumns = columns.map(c => c.name);
-    } else {
-      resultColumns = node.columns;
-    }
-
-    const resultRows = rows.map(row => {
-      const data = row.data as Record<string, unknown>;
-      const projected: Record<string, unknown> = {};
-      
-      for (const col of resultColumns) {
-        if (col.includes('.')) {
-          projected[col] = data[col];
-        } else {
-          projected[col] = data[col];
+        // Calculate aggregates
+        if (node.columns !== '*') {
+          for (const col of node.columns) {
+            if (col.aggregate) {
+              const agg = col.aggregate;
+              const values = agg.column === '*' 
+                ? groupRows 
+                : groupRows.map(r => r[agg.column]).filter(v => v !== null && v !== undefined);
+              
+              let result: unknown;
+              switch (agg.function) {
+                case 'COUNT':
+                  if (agg.distinct && agg.column !== '*') {
+                    result = new Set(values.map(v => JSON.stringify(v))).size;
+                  } else {
+                    result = agg.column === '*' ? groupRows.length : values.length;
+                  }
+                  break;
+                case 'SUM':
+                  result = values.reduce((sum: number, v) => sum + (Number(v) || 0), 0);
+                  break;
+                case 'AVG':
+                  const numericValues = values.filter(v => typeof v === 'number');
+                  result = numericValues.length > 0 
+                    ? numericValues.reduce((sum: number, v) => sum + (v as number), 0) / numericValues.length 
+                    : null;
+                  break;
+                case 'MIN':
+                  result = values.length > 0 ? Math.min(...values.map(v => Number(v))) : null;
+                  break;
+                case 'MAX':
+                  result = values.length > 0 ? Math.max(...values.map(v => Number(v))) : null;
+                  break;
+              }
+              resultRow[col.alias || col.name] = result;
+            } else if (!node.groupBy?.includes(col.name)) {
+              // Non-aggregate, non-grouped column - take first value
+              if (groupRows.length > 0) {
+                resultRow[col.alias || col.name] = groupRows[0][col.name];
+              }
+            }
+          }
         }
+
+        resultRows.push(resultRow);
       }
+
+      // Apply HAVING filter
+      if (node.having) {
+        resultRows = resultRows.filter(row => this.evaluateWhere(row, node.having!));
+      }
+
+      // Determine result columns
+      if (node.columns === '*') {
+        resultColumns = tableColumns.map(c => c.name);
+      } else {
+        resultColumns = node.columns.map(c => c.alias || c.name);
+      }
+    } else {
+      // No aggregates - regular SELECT
       
-      return projected;
-    });
+      // Apply ORDER BY
+      if (node.orderBy && node.orderBy.length > 0) {
+        rows.sort((a, b) => {
+          const aData = a.data as Record<string, unknown>;
+          const bData = b.data as Record<string, unknown>;
+          
+          for (const order of node.orderBy!) {
+            const aVal = aData[order.column];
+            const bVal = bData[order.column];
+            
+            let cmp = 0;
+            if (aVal < bVal) cmp = -1;
+            else if (aVal > bVal) cmp = 1;
+            
+            if (cmp !== 0) {
+              return order.direction === 'DESC' ? -cmp : cmp;
+            }
+          }
+          return 0;
+        });
+      }
+
+      // Apply OFFSET
+      if (node.offset) {
+        rows = rows.slice(node.offset);
+      }
+
+      // Apply LIMIT
+      if (node.limit) {
+        rows = rows.slice(0, node.limit);
+      }
+
+      // Project columns
+      if (node.columns === '*') {
+        resultColumns = tableColumns.map(c => c.name);
+      } else {
+        resultColumns = node.columns.map(c => {
+          if (c.tableName) return `${c.tableName}.${c.name}`;
+          return c.alias || c.name;
+        });
+      }
+
+      resultRows = rows.map(row => {
+        const data = row.data as Record<string, unknown>;
+        const projected: Record<string, unknown> = {};
+        
+        if (node.columns === '*') {
+          for (const col of resultColumns) {
+            projected[col] = data[col];
+          }
+        } else {
+          for (const col of node.columns) {
+            const key = col.tableName ? `${col.tableName}.${col.name}` : col.name;
+            const alias = col.alias || key;
+            projected[alias] = data[key] ?? data[col.name];
+          }
+        }
+        
+        return projected;
+      });
+
+      // Apply DISTINCT
+      if (node.distinct) {
+        const seen = new Set<string>();
+        resultRows = resultRows.filter(row => {
+          const key = JSON.stringify(row);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      }
+    }
 
     return {
       success: true,
@@ -541,11 +622,30 @@ export class QueryExecutor {
     };
   }
 
+  private groupRows(rows: Record<string, unknown>[], groupBy: string[]): Map<string, Record<string, unknown>[]> {
+    const groups = new Map<string, Record<string, unknown>[]>();
+    
+    if (groupBy.length === 0) {
+      // No GROUP BY - treat all rows as one group
+      groups.set('__all__', rows);
+      return groups;
+    }
+
+    for (const row of rows) {
+      const key = groupBy.map(col => JSON.stringify(row[col])).join('|');
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)!.push(row);
+    }
+
+    return groups;
+  }
+
   private async executeUpdate(node: UpdateNode): Promise<QueryResult> {
     const table = await this.getTable(node.tableName);
     const columns = table.columns as ColumnDefinition[];
 
-    // Get rows to update
     let { data: rows } = await supabase
       .from('rdbms_rows')
       .select('*')
@@ -553,12 +653,10 @@ export class QueryExecutor {
 
     if (!rows) rows = [];
 
-    // Filter by WHERE
     const toUpdate = node.where
       ? rows.filter(row => this.evaluateWhere(row.data as Record<string, unknown>, node.where!))
       : rows;
 
-    // Update each row
     let updateCount = 0;
     for (const row of toUpdate) {
       const data = { ...(row.data as Record<string, unknown>) };
@@ -591,7 +689,6 @@ export class QueryExecutor {
   private async executeDelete(node: DeleteNode): Promise<QueryResult> {
     const table = await this.getTable(node.tableName);
 
-    // Get rows to delete
     let { data: rows } = await supabase
       .from('rdbms_rows')
       .select('*')
@@ -599,12 +696,10 @@ export class QueryExecutor {
 
     if (!rows) rows = [];
 
-    // Filter by WHERE
     const toDelete = node.where
       ? rows.filter(row => this.evaluateWhere(row.data as Record<string, unknown>, node.where!))
       : rows;
 
-    // Delete each row
     for (const row of toDelete) {
       const { error } = await supabase
         .from('rdbms_rows')
@@ -625,12 +720,10 @@ export class QueryExecutor {
     const table = await this.getTable(node.tableName);
     const indexes = (table.indexes as IndexDefinition[]) || [];
 
-    // Check if index already exists
     if (indexes.some(idx => idx.name === node.indexName)) {
       throw new Error(`Index ${node.indexName} already exists`);
     }
 
-    // Validate columns
     const columns = table.columns as ColumnDefinition[];
     for (const col of node.columns) {
       if (!columns.some(c => c.name === col)) {
@@ -639,7 +732,6 @@ export class QueryExecutor {
       }
     }
 
-    // Add index to table
     const newIndex: IndexDefinition = {
       name: node.indexName,
       columns: node.columns,
@@ -654,7 +746,6 @@ export class QueryExecutor {
 
     if (error) throw new Error(error.message);
 
-    // Build the index in memory
     await this.buildIndex(table.id, node.tableName, newIndex);
 
     return {
@@ -675,7 +766,6 @@ export class QueryExecutor {
     
     for (const row of rows) {
       const data = row.data as Record<string, unknown>;
-      // Create composite key for multi-column indexes
       const key = index.columns.length === 1
         ? data[index.columns[0]]
         : JSON.stringify(index.columns.map(c => data[c]));
@@ -736,7 +826,6 @@ export class QueryExecutor {
 
     if (error) throw new Error(error.message);
     if (!data) {
-      // Provide helpful error message with suggestions
       const { data: tables } = await supabase
         .from('rdbms_tables')
         .select('table_name')
@@ -746,7 +835,6 @@ export class QueryExecutor {
       
       if (tables && tables.length > 0) {
         const tableNames = tables.map(t => t.table_name);
-        // Check for similar table names (fuzzy match)
         const similar = tableNames.filter(t => 
           t.toLowerCase().includes(tableName.toLowerCase()) ||
           tableName.toLowerCase().includes(t.toLowerCase())
@@ -828,6 +916,10 @@ export class QueryExecutor {
       );
     }
 
+    if (where.operator === 'NOT') {
+      return !this.evaluateWhere(data, where.right as WhereClause);
+    }
+
     // COMPARISON
     const column = where.left as string;
     const value = data[column];
@@ -851,6 +943,11 @@ export class QueryExecutor {
           .replace(/%/g, '.*')
           .replace(/_/g, '.');
         return new RegExp(`^${pattern}$`, 'i').test(String(value));
+      case 'NOT LIKE':
+        const notPattern = String(compareValue)
+          .replace(/%/g, '.*')
+          .replace(/_/g, '.');
+        return !new RegExp(`^${notPattern}$`, 'i').test(String(value));
       case 'IS NULL':
         return value === null || value === undefined;
       case 'IS NOT NULL':

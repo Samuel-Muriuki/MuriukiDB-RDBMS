@@ -18,6 +18,8 @@ import {
   WhereClause,
   JoinClause,
   OrderByClause,
+  SelectColumn,
+  AggregateFunction,
 } from './types';
 
 export class Parser {
@@ -67,6 +69,11 @@ export class Parser {
   private match(type: string, value?: string): boolean {
     const token = this.current();
     return token.type === type && (value === undefined || token.value.toUpperCase() === value.toUpperCase());
+  }
+
+  private isAggregateFunction(value: string): boolean {
+    const upper = value.toUpperCase();
+    return ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(upper);
   }
 
   private parseStatement(): ASTNode {
@@ -293,8 +300,15 @@ export class Parser {
   private parseSelect(): SelectNode {
     this.expect('KEYWORD', 'SELECT');
     
+    // Check for DISTINCT
+    let distinct = false;
+    if (this.match('KEYWORD', 'DISTINCT')) {
+      this.advance();
+      distinct = true;
+    }
+
     // Parse columns
-    let columns: string[] | '*';
+    let columns: SelectColumn[] | '*';
     if (this.match('OPERATOR', '*')) {
       this.advance();
       columns = '*';
@@ -303,27 +317,25 @@ export class Parser {
       do {
         if (this.match('PUNCTUATION', ',')) this.advance();
         
-        // Handle table.column notation
-        let colName = this.expect('IDENTIFIER').value;
-        if (this.match('PUNCTUATION', '.')) {
-          this.advance();
-          colName += '.' + this.expect('IDENTIFIER').value;
-        }
-        
-        // Handle AS alias
-        if (this.match('KEYWORD', 'AS')) {
-          this.advance();
-          this.expect('IDENTIFIER');
-        }
-        
-        columns.push(colName);
+        const col = this.parseSelectColumn();
+        columns.push(col);
       } while (this.match('PUNCTUATION', ','));
     }
 
     this.expect('KEYWORD', 'FROM');
     const tableName = this.expect('IDENTIFIER').value;
 
-    const node: SelectNode = { type: 'SELECT', columns, tableName };
+    // Check for table alias
+    let tableAlias: string | undefined;
+    if (this.match('IDENTIFIER') && !this.isReservedKeyword(this.current().value)) {
+      tableAlias = this.advance().value;
+    } else if (this.match('KEYWORD', 'AS')) {
+      this.advance();
+      tableAlias = this.expect('IDENTIFIER').value;
+    }
+
+    const node: SelectNode = { type: 'SELECT', columns, tableName, distinct };
+    if (tableAlias) node.tableAlias = tableAlias;
 
     // Parse JOINs
     while (this.match('KEYWORD', 'INNER') || this.match('KEYWORD', 'LEFT') || 
@@ -336,6 +348,23 @@ export class Parser {
     if (this.match('KEYWORD', 'WHERE')) {
       this.advance();
       node.where = this.parseWhere();
+    }
+
+    // Parse GROUP BY
+    if (this.match('KEYWORD', 'GROUP')) {
+      this.advance();
+      this.expect('KEYWORD', 'BY');
+      node.groupBy = [];
+      do {
+        if (this.match('PUNCTUATION', ',')) this.advance();
+        node.groupBy.push(this.expect('IDENTIFIER').value);
+      } while (this.match('PUNCTUATION', ','));
+    }
+
+    // Parse HAVING
+    if (this.match('KEYWORD', 'HAVING')) {
+      this.advance();
+      node.having = this.parseHaving();
     }
 
     // Parse ORDER BY
@@ -372,6 +401,84 @@ export class Parser {
     return node;
   }
 
+  private parseSelectColumn(): SelectColumn {
+    // Check if this is an aggregate function
+    if (this.current().type === 'KEYWORD' && this.isAggregateFunction(this.current().value)) {
+      const funcName = this.advance().value.toUpperCase() as AggregateFunction;
+      this.expect('PUNCTUATION', '(');
+      
+      let columnName: string;
+      let aggregateDistinct = false;
+      
+      // Check for DISTINCT inside aggregate
+      if (this.match('KEYWORD', 'DISTINCT')) {
+        this.advance();
+        aggregateDistinct = true;
+      }
+      
+      if (this.match('OPERATOR', '*')) {
+        this.advance();
+        columnName = '*';
+      } else {
+        columnName = this.expect('IDENTIFIER').value;
+      }
+      
+      this.expect('PUNCTUATION', ')');
+      
+      // Check for alias
+      let alias: string | undefined;
+      if (this.match('KEYWORD', 'AS')) {
+        this.advance();
+        alias = this.expect('IDENTIFIER').value;
+      }
+      
+      return {
+        name: columnName,
+        alias: alias || `${funcName.toLowerCase()}_${columnName === '*' ? 'all' : columnName}`,
+        aggregate: {
+          function: funcName,
+          column: columnName,
+          alias,
+          distinct: aggregateDistinct,
+        },
+      };
+    }
+
+    // Regular column
+    let tableName: string | undefined;
+    let colName = this.expect('IDENTIFIER').value;
+    
+    if (this.match('PUNCTUATION', '.')) {
+      this.advance();
+      tableName = colName;
+      colName = this.expect('IDENTIFIER').value;
+    }
+    
+    // Check for alias
+    let alias: string | undefined;
+    if (this.match('KEYWORD', 'AS')) {
+      this.advance();
+      alias = this.expect('IDENTIFIER').value;
+    }
+    
+    const result: SelectColumn = { name: colName };
+    if (alias) result.alias = alias;
+    if (tableName) result.tableName = tableName;
+    
+    return result;
+  }
+
+  private isReservedKeyword(value: string): boolean {
+    const reserved = [
+      'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'JOIN', 'INNER', 'LEFT', 'RIGHT',
+      'ON', 'ORDER', 'BY', 'ASC', 'DESC', 'LIMIT', 'OFFSET', 'GROUP', 'HAVING',
+      'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE', 'CREATE', 'DROP',
+      'TABLE', 'INDEX', 'IF', 'EXISTS', 'NOT', 'NULL', 'PRIMARY', 'KEY', 'UNIQUE',
+      'AS', 'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'LIKE',
+    ];
+    return reserved.includes(value.toUpperCase());
+  }
+
   private parseJoin(): JoinClause {
     let type: 'INNER' | 'LEFT' | 'RIGHT' = 'INNER';
     
@@ -394,8 +501,8 @@ export class Parser {
     if (this.match('KEYWORD', 'AS')) {
       this.advance();
       alias = this.expect('IDENTIFIER').value;
-    } else if (this.match('IDENTIFIER')) {
-      alias = this.expect('IDENTIFIER').value;
+    } else if (this.match('IDENTIFIER') && !this.isReservedKeyword(this.current().value)) {
+      alias = this.advance().value;
     }
 
     this.expect('KEYWORD', 'ON');
@@ -488,6 +595,46 @@ export class Parser {
     return this.parseOr();
   }
 
+  private parseHaving(): WhereClause {
+    // HAVING can reference aliases, so we use a simplified parser
+    // For now, we'll parse it similarly to WHERE but allow identifiers to be aliases
+    return this.parseHavingOr();
+  }
+
+  private parseHavingOr(): WhereClause {
+    let left = this.parseHavingAnd();
+
+    while (this.match('KEYWORD', 'OR')) {
+      this.advance();
+      const right = this.parseHavingAnd();
+      left = { operator: 'OR', left, right };
+    }
+
+    return left;
+  }
+
+  private parseHavingAnd(): WhereClause {
+    let left = this.parseHavingComparison();
+
+    while (this.match('KEYWORD', 'AND')) {
+      this.advance();
+      const right = this.parseHavingComparison();
+      left = { operator: 'AND', left, right };
+    }
+
+    return left;
+  }
+
+  private parseHavingComparison(): WhereClause {
+    const column = this.expect('IDENTIFIER').value;
+    
+    const operatorToken = this.advance();
+    const comparison = operatorToken.value as '=' | '!=' | '<' | '>' | '<=' | '>=';
+    const value = this.parseValue();
+
+    return { operator: 'COMPARISON', left: column, right: value, comparison };
+  }
+
   private parseOr(): WhereClause {
     let left = this.parseAnd();
 
@@ -525,6 +672,17 @@ export class Parser {
       }
       this.expect('KEYWORD', 'NULL');
       return { operator: 'COMPARISON', left: column, comparison: 'IS NULL' };
+    }
+
+    // Handle NOT LIKE
+    if (this.match('KEYWORD', 'NOT')) {
+      this.advance();
+      if (this.match('KEYWORD', 'LIKE')) {
+        this.advance();
+        const pattern = this.parseValue();
+        return { operator: 'COMPARISON', left: column, right: pattern, comparison: 'NOT LIKE' };
+      }
+      throw new Error('Expected LIKE after NOT');
     }
 
     // Handle LIKE

@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext, ReactNode, useCallback } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -14,8 +14,9 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
-  verifyOtp: (email: string, token: string, type: 'signup' | 'recovery') => Promise<{ error: string | null }>;
+  verifyOtp: (email: string, token: string, type: 'signup' | 'recovery' | 'email_change') => Promise<{ error: string | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
+  updateEmail: (newEmail: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,11 +25,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  // Track if we just completed an auth action to prevent race conditions
+  const justCompletedAuthRef = useRef(false);
 
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        // Don't update state if we just completed an auth action
+        // This prevents the "bounce back" issue
+        if (justCompletedAuthRef.current) {
+          return;
+        }
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -53,9 +61,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const trimmedEmail = email.trim();
       const trimmedPassword = password.trim();
-      const trimmedNickname = nickname.trim().replace(/\s+/g, ' '); // Collapse multiple spaces
+      const trimmedNickname = nickname.trim().replace(/\s+/g, ' ');
 
-      // Validate inputs
       if (!trimmedEmail || !trimmedPassword || !trimmedNickname) {
         return { error: 'All fields are required' };
       }
@@ -99,9 +106,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { error: error.message };
       }
 
-      // If confirmation is required, there will be no session yet.
-      // We'll create the leaderboard entry on first successful login instead.
+      // Check if email confirmation is needed
       const needsEmailConfirmation = !data.session;
+
+      // If auto-confirm is enabled and we have a session, create leaderboard entry
+      if (data.session && data.user) {
+        // Set the flag to prevent race condition
+        justCompletedAuthRef.current = true;
+        
+        // Update state immediately
+        setSession(data.session);
+        setUser(data.user);
+
+        // Create leaderboard entry
+        const { data: existing } = await supabase
+          .from('leaderboard')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+
+        if (!existing) {
+          await supabase.from('leaderboard').insert({
+            nickname: trimmedNickname,
+            user_id: data.user.id,
+            xp: 0,
+            level: 1,
+            queries_executed: 0,
+            tables_created: 0,
+            rows_inserted: 0,
+            badges: [],
+            current_streak: 0,
+            highest_streak: 0,
+          });
+        }
+
+        // Reset the flag after a short delay
+        setTimeout(() => {
+          justCompletedAuthRef.current = false;
+        }, 2000);
+      }
 
       return { error: null, needsEmailConfirmation };
     } catch (err: any) {
@@ -130,8 +173,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { error: error.message };
       }
 
-      // Ensure a leaderboard entry exists for this user (especially after email-confirmation signups)
-      if (data.user) {
+      if (data.user && data.session) {
+        // Set the flag to prevent race condition
+        justCompletedAuthRef.current = true;
+        
+        // Update state immediately
+        setSession(data.session);
+        setUser(data.user);
+
+        // Ensure a leaderboard entry exists
         const nicknameFromMeta = (data.user.user_metadata as any)?.nickname as string | undefined;
         const fallbackNickname = trimmedEmail.split('@')[0]?.slice(0, 20) || 'Player';
         const nickname = (nicknameFromMeta || fallbackNickname).trim();
@@ -156,6 +206,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             highest_streak: 0,
           });
         }
+
+        // Reset the flag after a short delay
+        setTimeout(() => {
+          justCompletedAuthRef.current = false;
+        }, 2000);
       }
 
       return { error: null };
@@ -166,6 +221,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
   }, []);
 
   const resetPassword = useCallback(async (email: string): Promise<{ error: string | null }> => {
@@ -176,9 +233,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { error: 'Email is required' };
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail);
+      // Use signInWithOtp with shouldCreateUser: false to send a 6-digit code
+      // This allows OTP verification flow instead of magic link
+      const { error } = await supabase.auth.signInWithOtp({
+        email: trimmedEmail,
+        options: {
+          shouldCreateUser: false,
+        },
+      });
 
       if (error) {
+        if (error.message.includes('User not found') || error.message.includes('user_not_found')) {
+          return { error: 'No account found with this email' };
+        }
         return { error: error.message };
       }
 
@@ -191,45 +258,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const verifyOtp = useCallback(async (
     email: string,
     token: string,
-    type: 'signup' | 'recovery'
+    type: 'signup' | 'recovery' | 'email_change'
   ): Promise<{ error: string | null }> => {
     try {
+      // Map our types to Supabase's expected types
+      const otpType = type === 'recovery' ? 'email' : type;
+      
       const { data, error } = await supabase.auth.verifyOtp({
         email: email.trim(),
         token: token.trim(),
-        type,
+        type: otpType,
       });
 
       if (error) {
+        if (error.message.includes('expired')) {
+          return { error: 'Code has expired. Please request a new one.' };
+        }
+        if (error.message.includes('invalid')) {
+          return { error: 'Invalid code. Please check and try again.' };
+        }
         return { error: error.message };
       }
 
-      // For signup, create leaderboard entry after verification
-      if (type === 'signup' && data.user) {
-        const nicknameFromMeta = (data.user.user_metadata as any)?.nickname as string | undefined;
-        const fallbackNickname = email.split('@')[0]?.slice(0, 20) || 'Player';
-        const nickname = (nicknameFromMeta || fallbackNickname).trim();
+      if (data.user && data.session) {
+        // Set the flag to prevent race condition
+        justCompletedAuthRef.current = true;
+        
+        // Update state immediately
+        setSession(data.session);
+        setUser(data.user);
 
-        const { data: existing } = await supabase
-          .from('leaderboard')
-          .select('id')
-          .eq('user_id', data.user.id)
-          .maybeSingle();
+        // For signup, create leaderboard entry after verification
+        if (type === 'signup') {
+          const nicknameFromMeta = (data.user.user_metadata as any)?.nickname as string | undefined;
+          const fallbackNickname = email.split('@')[0]?.slice(0, 20) || 'Player';
+          const nickname = (nicknameFromMeta || fallbackNickname).trim();
 
-        if (!existing) {
-          await supabase.from('leaderboard').insert({
-            nickname,
-            user_id: data.user.id,
-            xp: 0,
-            level: 1,
-            queries_executed: 0,
-            tables_created: 0,
-            rows_inserted: 0,
-            badges: [],
-            current_streak: 0,
-            highest_streak: 0,
-          });
+          const { data: existing } = await supabase
+            .from('leaderboard')
+            .select('id')
+            .eq('user_id', data.user.id)
+            .maybeSingle();
+
+          if (!existing) {
+            await supabase.from('leaderboard').insert({
+              nickname,
+              user_id: data.user.id,
+              xp: 0,
+              level: 1,
+              queries_executed: 0,
+              tables_created: 0,
+              rows_inserted: 0,
+              badges: [],
+              current_streak: 0,
+              highest_streak: 0,
+            });
+          }
         }
+
+        // Reset the flag after a short delay
+        setTimeout(() => {
+          justCompletedAuthRef.current = false;
+        }, 2000);
       }
 
       return { error: null };
@@ -252,6 +342,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
+  const updateEmail = useCallback(async (newEmail: string): Promise<{ error: string | null }> => {
+    try {
+      const trimmedEmail = newEmail.trim();
+      
+      if (!trimmedEmail) {
+        return { error: 'Email is required' };
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmedEmail)) {
+        return { error: 'Invalid email format' };
+      }
+
+      const { error } = await supabase.auth.updateUser({
+        email: trimmedEmail,
+      });
+
+      if (error) {
+        if (error.message.includes('already')) {
+          return { error: 'This email is already in use' };
+        }
+        return { error: error.message };
+      }
+
+      return { error: null };
+    } catch (err: any) {
+      return { error: err.message || 'Email update failed' };
+    }
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -263,6 +383,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       resetPassword,
       verifyOtp,
       updatePassword,
+      updateEmail,
     }}>
       {children}
     </AuthContext.Provider>
@@ -271,7 +392,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  // Return safe defaults if outside provider (during HMR or portals)
   if (context === undefined) {
     return {
       user: null,
@@ -283,6 +403,7 @@ export const useAuth = () => {
       resetPassword: async () => ({ error: 'Auth not initialized' }),
       verifyOtp: async () => ({ error: 'Auth not initialized' }),
       updatePassword: async () => ({ error: 'Auth not initialized' }),
+      updateEmail: async () => ({ error: 'Auth not initialized' }),
     } as AuthContextType;
   }
   return context;
