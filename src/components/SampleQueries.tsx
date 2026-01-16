@@ -575,15 +575,16 @@ export const SampleQueries = ({ onSelectQuery, highlightQueryId, onHighlightComp
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredQueries.map((category) => (
-                <div key={category.category}>
+              {filteredQueries.map((category, catIdx) => (
+                <div key={category.category} data-tour={catIdx === 0 ? "sample-category" : undefined}>
                   <h4 className="text-xs font-mono text-muted-foreground mb-2">{category.category}</h4>
                   <div className="space-y-1.5">
-                    {category.queries.map((query) => (
+                    {category.queries.map((query, queryIdx) => (
                       <Button
                         key={query.id}
                         ref={(ref) => setQueryRef(query.id, ref)}
                         variant="ghost"
+                        data-tour={catIdx === 0 && queryIdx === 0 ? "sample-query" : undefined}
                         className={cn(
                           "w-full justify-start h-auto py-2 px-3 text-left hover:bg-primary/10 group transition-all duration-200",
                           blinkingId === query.id && "animate-query-blink"

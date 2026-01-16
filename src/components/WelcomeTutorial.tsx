@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Terminal, Users, Code, Trophy, Keyboard, ChevronRight, ChevronLeft, X, Sun, Moon } from 'lucide-react';
+import { Terminal, Users, Code, Trophy, Keyboard, ChevronRight, ChevronLeft, X, Sun, Moon, Play } from 'lucide-react';
 import { useTheme } from '@/hooks/useTheme';
 
 interface TutorialStep {
@@ -61,9 +61,10 @@ const STORAGE_KEY = 'muriukidb-tutorial-completed';
 
 interface WelcomeTutorialProps {
   onComplete: () => void;
+  onStartTour?: () => void;
 }
 
-export const WelcomeTutorial = ({ onComplete }: WelcomeTutorialProps) => {
+export const WelcomeTutorial = ({ onComplete, onStartTour }: WelcomeTutorialProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -208,6 +209,20 @@ export const WelcomeTutorial = ({ onComplete }: WelcomeTutorialProps) => {
               {!isLastStep && <ChevronRight className="w-4 h-4" />}
             </Button>
           </div>
+
+          {isLastStep && onStartTour && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                handleComplete();
+                onStartTour();
+              }}
+              className="w-full font-mono text-sm gap-2 border-primary/50 hover:bg-primary/10"
+            >
+              <Play className="w-4 h-4" />
+              Take Interactive Tour
+            </Button>
+          )}
 
           <p className="text-[10px] text-center text-muted-foreground">
             Step {currentStep + 1} of {TUTORIAL_STEPS.length}
