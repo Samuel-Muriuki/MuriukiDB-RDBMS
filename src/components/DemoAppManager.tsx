@@ -581,7 +581,7 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
     <div className="space-y-4 md:space-y-6">
       <FadeContent blur duration={400}>
         {/* Table Tabs */}
-        <div className="flex gap-1 mb-4 overflow-x-auto scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent pb-2">
+        <div data-tour="table-selector" className="flex gap-1 mb-4 overflow-x-auto scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent pb-2">
           {DEMO_TABLES.map(table => (
             <Button
               key={table.id}
@@ -621,6 +621,7 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
+                  data-tour="load-sample"
                   onClick={loadSampleData}
                   variant="outline"
                   size="sm"
@@ -690,7 +691,7 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
 
       {/* Add/Edit Form */}
       <FadeContent blur duration={400} delay={100}>
-        <Card className="glass-card border-primary/30">
+        <Card data-tour="add-form" className="glass-card border-primary/30">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-mono flex items-center gap-2">
               <UserPlus className="w-4 h-4" />
@@ -773,7 +774,7 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
 
       {/* Data Table */}
       <FadeContent blur duration={400} delay={300}>
-        <Card className="glass-card border-primary/30 overflow-hidden">
+        <Card data-tour="data-table" className="glass-card border-primary/30 overflow-hidden">
           <div
             ref={tableRef}
             className="overflow-x-auto focus:outline-none"
