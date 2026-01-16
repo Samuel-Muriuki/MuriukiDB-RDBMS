@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { REPL } from '@/components/REPL';
-import { ContactManager } from '@/components/ContactManager';
+import { DemoAppManager } from '@/components/DemoAppManager';
 import { QueryHistory } from '@/components/QueryHistory';
 import { SampleQueries, findPrerequisiteQuery } from '@/components/SampleQueries';
 import { GameStats } from '@/components/GameStats';
@@ -12,7 +12,9 @@ import { ProfilePanel } from '@/components/ProfilePanel';
 import { AppFooter } from '@/components/AppFooter';
 import { FadeContent } from '@/components/animations/FadeContent';
 import { DecryptedText } from '@/components/animations/DecryptedText';
-import { Terminal, Users, Github, History, Code, Trophy, Award, User } from 'lucide-react';
+import { KeyboardShortcutsModal, useKeyboardShortcuts } from '@/components/KeyboardShortcutsModal';
+import { WelcomeTutorial } from '@/components/WelcomeTutorial';
+import { Terminal, Users, Github, History, Code, Trophy, Award, User, Keyboard } from 'lucide-react';
 import { useUserFingerprint } from '@/hooks/useUserFingerprint';
 import { useAuth } from '@/hooks/useAuth';
 import { useGameStats } from '@/hooks/useGameStats';
@@ -36,9 +38,12 @@ const Index = () => {
   const [selectedQuery, setSelectedQuery] = useState('');
   const [mobilePanel, setMobilePanel] = useState<SidePanel | null>(null);
   const [highlightedQueryId, setHighlightedQueryId] = useState<string | null>(null);
+  const [activeTableId, setActiveTableId] = useState('contacts');
+  const [showTutorial, setShowTutorial] = useState(false);
   const { userInfo } = useUserFingerprint();
   const { user } = useAuth();
   const { migrateAnonymousStats } = useGameStats();
+  const { isOpen: shortcutsOpen, setIsOpen: setShortcutsOpen } = useKeyboardShortcuts();
 
   // Global auth sync: claim session data + migrate stats when user logs in
   useEffect(() => {
@@ -47,6 +52,27 @@ const Index = () => {
       migrateAnonymousStats();
     }
   }, [user, migrateAnonymousStats]);
+
+  // Global keyboard shortcuts for tab switching
+  useEffect(() => {
+    const handleGlobalShortcuts = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isTyping = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      
+      if (!isTyping && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveTab('repl');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          setActiveTab('contacts');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalShortcuts);
+    return () => window.removeEventListener('keydown', handleGlobalShortcuts);
+  }, []);
 
   const handleSelectQuery = (query: string) => {
     setSelectedQuery(query);
@@ -71,6 +97,8 @@ const Index = () => {
   };
 
   return (
+    <>
+      <WelcomeTutorial onComplete={() => setShowTutorial(false)} />
     <div className="h-screen flex flex-col bg-background text-foreground matrix-bg overflow-hidden">
       {/* Header */}
       <header className="border-b border-border/50 glass-card flex-shrink-0 z-50">
@@ -109,21 +137,28 @@ const Index = () => {
               </TabButton>
             </nav>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <GameStats />
               <Link to="/achievements">
-                <button className="p-2 rounded-lg hover:bg-primary/20 transition-colors" title="Achievements">
-                  <Award className="w-5 h-5 text-yellow-400" />
+                <button className="p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors" title="Achievements">
+                  <Award className="w-4 sm:w-5 h-4 sm:h-5 text-yellow-400" />
                 </button>
               </Link>
+              <button 
+                onClick={() => setShortcutsOpen(true)}
+                className="p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors hidden sm:block" 
+                title="Keyboard Shortcuts (?)"
+              >
+                <Keyboard className="w-4 sm:w-5 h-4 sm:h-5 text-muted-foreground" />
+              </button>
               <ThemeToggle />
               <a 
                 href="https://github.com/Samuel-Muriuki" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary transition-colors"
+                className="text-muted-foreground hover:text-primary transition-colors hidden sm:block"
               >
-                <Github className="w-5 h-5" />
+                <Github className="w-4 sm:w-5 h-4 sm:h-5" />
               </a>
             </div>
           </div>
