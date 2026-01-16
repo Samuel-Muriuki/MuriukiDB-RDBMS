@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      auth_email_otps: {
+        Row: {
+          attempts: number | null
+          code_hash: string
+          consumed_at: string | null
+          created_at: string | null
+          email: string
+          expires_at: string
+          id: string
+          purpose: string
+        }
+        Insert: {
+          attempts?: number | null
+          code_hash: string
+          consumed_at?: string | null
+          created_at?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          purpose: string
+        }
+        Update: {
+          attempts?: number | null
+          code_hash?: string
+          consumed_at?: string | null
+          created_at?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          purpose?: string
+        }
+        Relationships: []
+      }
       daily_activity: {
         Row: {
           activity_date: string
@@ -279,6 +312,7 @@ export type Database = {
     }
     Functions: {
       claim_session_data: { Args: { p_session_id: string }; Returns: undefined }
+      cleanup_expired_otps: { Args: never; Returns: undefined }
       cleanup_inactive_users: { Args: never; Returns: undefined }
       compute_user_streak: {
         Args: { p_user_id: string }
