@@ -33,6 +33,7 @@ interface GameStatsContextType {
   isCoolingDown: boolean;
   cooldownMultiplier: number;
   migrateAnonymousStats: () => void;
+  syncStatsToServer: () => Promise<void>;
 }
 
 interface RankInfo {
@@ -76,6 +77,9 @@ const RANKS: Array<{ id: number; name: string; icon: string; minXp: number }> = 
 const FAST_GAIN_LIMIT = 1000; // Max points in 24 hours before cooldown
 const COOLDOWN_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 const COOLDOWN_REDUCTION_FACTOR = 0.2; // Reduce rewards to 20% when cooling down
+
+// Background sync interval (20 seconds)
+const SYNC_INTERVAL_MS = 20000;
 
 const defaultStats: GameStats = {
   queriesExecuted: 0,
@@ -229,6 +233,8 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
 
   const [currentRank, setCurrentRank] = useState<RankInfo>(() => getRankInfo(stats.xp));
   const previousRankRef = useRef(currentRank.id);
+  const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSyncRef = useRef<number>(0);
 
   // Calculate cooldown status
   const now = Date.now();
@@ -249,6 +255,111 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
     // Rank up notification handled elsewhere to avoid double state updates
     previousRankRef.current = newRank.id;
   }, [stats]);
+
+  // Sync stats to server (throttled)
+  const syncStatsToServer = useCallback(async () => {
+    const userId = getCachedUserId();
+    if (!userId) return;
+
+    // Throttle syncs to prevent spam
+    const now = Date.now();
+    if (now - lastSyncRef.current < 5000) return; // Min 5s between syncs
+    lastSyncRef.current = now;
+
+    try {
+      // Fetch current server stats
+      const { data: serverData, error: fetchError } = await supabase
+        .from('leaderboard')
+        .select('xp, queries_executed, tables_created, rows_inserted, badges, current_streak, highest_streak')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.warn('[GameStats] Error fetching server stats:', fetchError);
+        return;
+      }
+
+      const serverStats = serverData || {
+        xp: 0,
+        queries_executed: 0,
+        tables_created: 0,
+        rows_inserted: 0,
+        badges: [],
+        current_streak: 0,
+        highest_streak: 0,
+      };
+
+      // Merge with max logic
+      const mergedXp = Math.max(serverStats.xp, stats.xp);
+      const mergedQueries = Math.max(serverStats.queries_executed, stats.queriesExecuted);
+      const mergedTables = Math.max(serverStats.tables_created, stats.tablesCreated);
+      const mergedRows = Math.max(serverStats.rows_inserted, stats.rowsInserted);
+      const mergedStreak = Math.max(serverStats.current_streak, stats.streak);
+      const mergedHighestStreak = Math.max(serverStats.highest_streak, stats.highestStreak);
+      const mergedBadges = Array.from(new Set([...(serverStats.badges || []), ...stats.badges]));
+
+      // Only update if there's a difference
+      if (
+        mergedXp !== serverStats.xp ||
+        mergedQueries !== serverStats.queries_executed ||
+        mergedTables !== serverStats.tables_created ||
+        mergedStreak !== serverStats.current_streak
+      ) {
+        await supabase
+          .from('leaderboard')
+          .update({
+            xp: mergedXp,
+            level: getRankInfo(mergedXp).level,
+            queries_executed: mergedQueries,
+            tables_created: mergedTables,
+            rows_inserted: mergedRows,
+            badges: mergedBadges.slice(0, 50),
+            current_streak: mergedStreak,
+            highest_streak: mergedHighestStreak,
+            last_seen: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+
+        console.log('[GameStats] Background sync completed');
+      }
+    } catch (err) {
+      console.warn('[GameStats] Background sync error:', err);
+    }
+  }, [stats]);
+
+  // Background sync effect - runs periodically for authenticated users
+  useEffect(() => {
+    const userId = getCachedUserId();
+    if (!userId) return;
+
+    // Schedule periodic sync
+    const scheduleSync = () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+      syncTimeoutRef.current = setTimeout(() => {
+        syncStatsToServer();
+        scheduleSync(); // Reschedule
+      }, SYNC_INTERVAL_MS);
+    };
+
+    scheduleSync();
+
+    // Also sync on visibility change (when user comes back to tab)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncStatsToServer();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [syncStatsToServer]);
 
   // Migrate anonymous stats to user-scoped stats when user logs in
   // Also fetch server stats and merge to ensure header is in sync
@@ -310,7 +421,10 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
     if (!isMigrationDone(userId, sessionId)) {
       markMigrationDone(userId, sessionId);
     }
-  }, [stats.xp, stats.queriesExecuted]);
+
+    // Trigger an immediate sync to server after migration
+    setTimeout(() => syncStatsToServer(), 1000);
+  }, [stats.xp, stats.queriesExecuted, syncStatsToServer]);
 
   const addXP = useCallback((amount: number, reason: string): number => {
     if (amount <= 0) return 0;
@@ -450,6 +564,7 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
       isCoolingDown,
       cooldownMultiplier,
       migrateAnonymousStats,
+      syncStatsToServer,
     }}>
       {children}
     </GameStatsContext.Provider>

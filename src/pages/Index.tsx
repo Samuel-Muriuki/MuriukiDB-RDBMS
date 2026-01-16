@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { REPL } from '@/components/REPL';
 import { ContactManager } from '@/components/ContactManager';
 import { QueryHistory } from '@/components/QueryHistory';
@@ -15,8 +15,8 @@ import { DecryptedText } from '@/components/animations/DecryptedText';
 import { Terminal, Users, Github, History, Code, Trophy, Award, User } from 'lucide-react';
 import { useUserFingerprint } from '@/hooks/useUserFingerprint';
 import { useAuth } from '@/hooks/useAuth';
+import { useGameStats } from '@/hooks/useGameStats';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
   Sheet,
@@ -26,13 +26,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 type Tab = 'repl' | 'contacts';
 type SidePanel = 'history' | 'samples' | 'leaderboard' | 'profile';
@@ -43,40 +36,17 @@ const Index = () => {
   const [selectedQuery, setSelectedQuery] = useState('');
   const [mobilePanel, setMobilePanel] = useState<SidePanel | null>(null);
   const [highlightedQueryId, setHighlightedQueryId] = useState<string | null>(null);
-  const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
-  const [searchParams, setSearchParams] = useSearchParams();
   const { userInfo } = useUserFingerprint();
-  const { user, updatePassword } = useAuth();
+  const { user } = useAuth();
+  const { migrateAnonymousStats } = useGameStats();
 
-  // Handle password recovery redirect
+  // Global auth sync: claim session data + migrate stats when user logs in
   useEffect(() => {
-    const isRecovery = searchParams.get('recovery') === 'true';
-    if (isRecovery && user) {
-      setShowRecoveryDialog(true);
-      // Clear the URL param
-      searchParams.delete('recovery');
-      setSearchParams(searchParams, { replace: true });
+    if (user) {
+      // Run migration which handles claiming tables and merging stats
+      migrateAnonymousStats();
     }
-  }, [searchParams, user, setSearchParams]);
-
-  const handlePasswordUpdate = async () => {
-    if (newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
-      return;
-    }
-    setIsUpdatingPassword(true);
-    const { error } = await updatePassword(newPassword);
-    setIsUpdatingPassword(false);
-    if (error) {
-      toast.error(error);
-    } else {
-      toast.success('Password updated successfully!');
-      setShowRecoveryDialog(false);
-      setNewPassword('');
-    }
-  };
+  }, [user, migrateAnonymousStats]);
 
   const handleSelectQuery = (query: string) => {
     setSelectedQuery(query);
@@ -332,35 +302,6 @@ const Index = () => {
 
       {/* Footer */}
       <AppFooter />
-
-      {/* Password Recovery Dialog */}
-      <Dialog open={showRecoveryDialog} onOpenChange={setShowRecoveryDialog}>
-        <DialogContent className="glass-card border-primary/30">
-          <DialogHeader>
-            <DialogTitle className="font-mono text-primary">Set New Password</DialogTitle>
-            <DialogDescription>
-              Enter your new password below to complete the recovery process.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 pt-4">
-            <Input
-              type="password"
-              placeholder="New password (min 6 characters)"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              className="font-mono"
-              disabled={isUpdatingPassword}
-            />
-            <Button 
-              onClick={handlePasswordUpdate} 
-              className="w-full font-mono"
-              disabled={isUpdatingPassword || newPassword.length < 6}
-            >
-              {isUpdatingPassword ? 'Updating...' : 'Update Password'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

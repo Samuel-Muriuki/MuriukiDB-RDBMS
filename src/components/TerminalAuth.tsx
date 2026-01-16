@@ -112,7 +112,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
         addOutput('output', '║         PASSWORD RECOVERY              ║');
         addOutput('output', '╚════════════════════════════════════════╝');
         addOutput('output', '');
-        addOutput('output', 'Enter your EMAIL to receive a password reset link:');
+        addOutput('output', 'Enter your EMAIL to receive a 6-digit code:');
         setStep('recovery_email');
         return;
       }
@@ -344,7 +344,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       return;
     }
 
-    // Handle recovery flow - sends a magic link instead of OTP
+    // Handle recovery flow - sends OTP code (not magic link)
     if (step === 'recovery_email') {
       const email = rawValue.trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -356,7 +356,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       addOutput('input', `> ${email}`);
       setFormData(prev => ({ ...prev, email }));
       setIsProcessing(true);
-      addOutput('output', 'Sending password reset link...');
+      addOutput('output', 'Sending 6-digit recovery code...');
       
       const { error } = await resetPassword(email);
       
@@ -368,13 +368,44 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       }
       
       addOutput('success', '');
-      addOutput('success', '✓ Password reset link sent!');
+      addOutput('success', '✓ Recovery code sent!');
       addOutput('output', '');
-      addOutput('output', 'Check your email and click the link to reset your password.');
-      addOutput('output', 'You will be redirected back here to set a new password.');
+      addOutput('output', 'Check your email for a 6-digit code.');
+      addOutput('output', '(Code expires in 1 hour)');
       addOutput('output', '');
-      addOutput('output', 'Type EXIT to close this window.');
-      setStep('idle');
+      addOutput('output', 'Enter the 6-digit code:');
+      setStep('recovery_otp');
+      setIsProcessing(false);
+      return;
+    }
+
+    // Handle OTP verification for recovery
+    if (step === 'recovery_otp') {
+      const code = rawValue.trim();
+      if (code.length !== 6 || !/^\d+$/.test(code)) {
+        addOutput('input', `> ${code}`);
+        addOutput('error', 'Please enter a valid 6-digit code');
+        return;
+      }
+      addOutput('input', `> ${code}`);
+      setIsProcessing(true);
+      addOutput('output', 'Verifying code...');
+      
+      const { error } = await verifyOtp(formData.email, code, 'recovery');
+      
+      if (error) {
+        addOutput('error', `Error: ${error}`);
+        addOutput('output', 'Please try entering the code again:');
+        setIsProcessing(false);
+        return;
+      }
+      
+      addOutput('success', '');
+      addOutput('success', '✓ Code verified!');
+      addOutput('output', '');
+      addOutput('output', 'Enter your NEW PASSWORD:');
+      addOutput('output', '(min 6 characters, Shift+T to toggle visibility)');
+      setStep('recovery_new_password');
       setIsProcessing(false);
       return;
     }
