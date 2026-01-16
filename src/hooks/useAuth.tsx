@@ -263,6 +263,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   }, []);
 
+  // Reset password now sends OTP code instead of magic link
   const resetPassword = useCallback(async (email: string): Promise<{ error: string | null }> => {
     try {
       const trimmedEmail = email.trim();
@@ -271,13 +272,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { error: 'Email is required' };
       }
 
-      // Use resetPasswordForEmail which sends a magic link for password reset
-      const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
-        redirectTo: `${window.location.origin}/?recovery=true`,
+      // Use signInWithOtp to send a code for password reset
+      // We'll use type 'recovery' when verifying
+      const { error } = await supabase.auth.signInWithOtp({
+        email: trimmedEmail,
+        options: {
+          shouldCreateUser: false, // Don't create a new user if they don't exist
+        },
       });
 
       if (error) {
-        if (error.message.includes('User not found') || error.message.includes('user_not_found')) {
+        if (error.message.includes('User not found') || error.message.includes('user_not_found') || error.message.includes('Signups not allowed')) {
           return { error: 'No account found with this email' };
         }
         return { error: error.message };
@@ -296,6 +301,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   ): Promise<{ error: string | null }> => {
     try {
       // Map our types to Supabase's expected types
+      // For recovery via signInWithOtp, we use 'email' type
       const otpType = type === 'recovery' ? 'email' : type;
       
       const { data, error } = await supabase.auth.verifyOtp({
