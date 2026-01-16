@@ -448,9 +448,12 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
     setStats(prev => {
       const newXp = prev.xp + actualAmount;
       const newBadges = [...prev.badges];
+      const previousBadgeCount = prev.badges.length;
       
       // Check rank-based badges
       const newRank = getRankInfo(newXp);
+      const prevRank = getRankInfo(prev.xp);
+      
       if (newRank.id >= 4 && !newBadges.includes('rank_sergeant')) {
         newBadges.push('rank_sergeant');
       }
@@ -465,6 +468,21 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
       }
       if (newRank.id >= 23 && !newBadges.includes('god_mode')) {
         newBadges.push('god_mode');
+      }
+      
+      // Dispatch events for sound/notification feedback
+      // Use setTimeout to avoid dispatching during render
+      if (newRank.id > prevRank.id) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('muriukidb:rankup', { detail: { rank: newRank } }));
+        }, 0);
+      }
+      if (newBadges.length > previousBadgeCount) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('muriukidb:achievement', { 
+            detail: { badges: newBadges.slice(previousBadgeCount) } 
+          }));
+        }, 0);
       }
       
       // Add point event for cooldown tracking, keep only last 48 hours
@@ -487,6 +505,7 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
   const incrementQueries = useCallback((success: boolean) => {
     setStats(prev => {
       const newBadges = [...prev.badges];
+      const previousBadgeCount = prev.badges.length;
       const queriesExecuted = prev.queriesExecuted + 1;
       const successfulQueries = success ? prev.successfulQueries + 1 : prev.successfulQueries;
 
@@ -522,6 +541,15 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
         newBadges.push('streak_starter');
       }
 
+      // Dispatch achievement event if new badges earned
+      if (newBadges.length > previousBadgeCount) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('muriukidb:achievement', { 
+            detail: { badges: newBadges.slice(previousBadgeCount) } 
+          }));
+        }, 0);
+      }
+
       return {
         ...prev,
         queriesExecuted,
@@ -537,8 +565,14 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
   const incrementTablesCreated = useCallback(() => {
     setStats(prev => {
       const newBadges = [...prev.badges];
-      if (!newBadges.includes('table_creator')) {
+      const hadTableCreator = newBadges.includes('table_creator');
+      if (!hadTableCreator) {
         newBadges.push('table_creator');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('muriukidb:achievement', { 
+            detail: { badges: ['table_creator'] } 
+          }));
+        }, 0);
       }
       return { ...prev, tablesCreated: prev.tablesCreated + 1, badges: newBadges };
     });
@@ -548,8 +582,14 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
     setStats(prev => {
       const newBadges = [...prev.badges];
       const newTotal = prev.rowsInserted + count;
-      if (newTotal >= 10 && !newBadges.includes('data_wizard')) {
+      const hadDataWizard = newBadges.includes('data_wizard');
+      if (newTotal >= 10 && !hadDataWizard) {
         newBadges.push('data_wizard');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('muriukidb:achievement', { 
+            detail: { badges: ['data_wizard'] } 
+          }));
+        }, 0);
       }
       return { ...prev, rowsInserted: newTotal, badges: newBadges };
     });
