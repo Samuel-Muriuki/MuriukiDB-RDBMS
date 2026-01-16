@@ -472,9 +472,10 @@ html.transitioning * {
   border-radius: 3px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: hsl(var(--terminal-green) / 0.55);
+  background: hsl(var(--terminal-green) / 0.75);
   border-radius: 3px;
+  box-shadow: 0 0 6px hsl(var(--terminal-green) / 0.3);
 }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--terminal-green) / 0.8);
+  background: hsl(var(--terminal-green) / 0.9);
 }
