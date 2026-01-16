@@ -159,7 +159,13 @@ const Index = () => {
 
   return (
     <>
-      <WelcomeTutorial onComplete={() => setShowTutorial(false)} />
+      <WelcomeTutorial 
+        onComplete={() => setShowTutorial(false)} 
+        onStartTour={() => {
+          setShowTutorial(false);
+          tour.start();
+        }}
+      />
       <KeyboardShortcutsModal open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       <div className="h-screen flex flex-col bg-background text-foreground matrix-bg overflow-hidden">
         {/* Header */}
@@ -194,6 +200,7 @@ const Index = () => {
                 active={activeTab === 'contacts'} 
                 onClick={() => setActiveTab('contacts')}
                 icon={<Users className="w-3.5 h-3.5" />}
+                data-tour="demo-tab"
               >
                 Demo App
               </TabButton>
@@ -201,11 +208,23 @@ const Index = () => {
 
             <div className="flex items-center gap-1 sm:gap-2">
               <GameStats />
-              <Link to="/achievements">
+              <Link to="/achievements" data-tour="achievements-link">
                 <button className="p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors" title="Achievements">
                   <Award className="w-4 sm:w-5 h-4 sm:h-5 text-yellow-400" />
                 </button>
               </Link>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button 
+                    onClick={() => tour.start()}
+                    className="p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors hidden sm:block" 
+                    title="Start Tour"
+                  >
+                    <Play className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Start Interactive Tour</TooltipContent>
+              </Tooltip>
               <button 
                 onClick={() => setShortcutsOpen(true)}
                 className="p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors hidden sm:block" 
@@ -253,7 +272,7 @@ const Index = () => {
         <div className="flex gap-2 p-3 overflow-x-auto scrollbar-thin scrollbar-thumb-primary/30 scrollbar-track-transparent">
           <Sheet open={sampleSheetOpen} onOpenChange={setSampleSheetOpen}>
             <SheetTrigger asChild>
-              <Button variant="outline" size="sm" className="font-mono text-xs gap-1.5 glass-button flex-shrink-0 whitespace-nowrap">
+              <Button data-tour="samples-btn" variant="outline" size="sm" className="font-mono text-xs gap-1.5 glass-button flex-shrink-0 whitespace-nowrap">
                 <Code className="w-3.5 h-3.5" />
                 Samples
               </Button>

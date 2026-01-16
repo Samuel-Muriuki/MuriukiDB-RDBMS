@@ -1,13 +1,13 @@
 import { cn } from '@/lib/utils';
 
-interface TabButtonProps {
+interface TabButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
   icon?: React.ReactNode;
 }
 
-export const TabButton = ({ active, onClick, children, icon }: TabButtonProps) => {
+export const TabButton = ({ active, onClick, children, icon, ...props }: TabButtonProps) => {
   return (
     <button
       onClick={onClick}
@@ -18,6 +18,7 @@ export const TabButton = ({ active, onClick, children, icon }: TabButtonProps) =
           ? 'border-primary text-primary' 
           : 'border-transparent text-muted-foreground hover:border-primary/50'
       )}
+      {...props}
     >
       {icon}
       {children}
