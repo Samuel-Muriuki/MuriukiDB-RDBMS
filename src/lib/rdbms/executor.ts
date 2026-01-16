@@ -22,6 +22,7 @@ import {
   SelectColumn,
 } from './types';
 import { Json } from '@/integrations/supabase/types';
+import { getCachedUserId, getCachedAccessToken } from '@/lib/auth/sessionCache';
 
 // In-memory index cache
 const indexCache: Map<string, BTree<unknown>> = new Map();
@@ -29,7 +30,7 @@ const indexCache: Map<string, BTree<unknown>> = new Map();
 // Session key for tracking anonymous users
 const SESSION_KEY = 'muriukidb-session-id';
 
-function getOrCreateSessionId(): string {
+export function getOrCreateSessionId(): string {
   let sessionId = sessionStorage.getItem(SESSION_KEY);
   if (!sessionId) {
     sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -38,12 +39,11 @@ function getOrCreateSessionId(): string {
   return sessionId;
 }
 
-// Get user context for RLS compliance
-async function getUserContext(): Promise<{ userId: string | null; sessionId: string }> {
-  const { data: { session } } = await supabase.auth.getSession();
+// Get user context for RLS compliance - uses cached session to avoid refresh storms
+function getUserContext(): { userId: string | null; sessionId: string } {
   const sessionId = getOrCreateSessionId();
   return {
-    userId: session?.user?.id || null,
+    userId: getCachedUserId(),
     sessionId,
   };
 }
@@ -62,17 +62,17 @@ let windowStart = Date.now();
 let serverRateLimitRemaining = 30;
 let isServerRateLimitActive = false;
 
-// Server-side rate limit check
+// Server-side rate limit check - uses cached token to avoid refresh storms
 async function checkServerRateLimit(): Promise<{ allowed: boolean; remaining: number; retryAfter?: number }> {
   try {
-    const { data: { session } } = await supabase.auth.getSession();
+    const accessToken = getCachedAccessToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
     };
     
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`;
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
     }
 
     const response = await fetch(
@@ -192,7 +192,7 @@ export class QueryExecutor {
   }
 
   private async executeCreateTable(node: CreateTableNode): Promise<QueryResult> {
-    const { userId, sessionId } = await getUserContext();
+    const { userId, sessionId } = getUserContext();
     
     const { count: tableCount } = await supabase
       .from('rdbms_tables')
