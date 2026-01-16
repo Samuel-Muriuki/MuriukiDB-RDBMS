@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Play, Search, X, AlertTriangle } from 'lucide-react';
+import { Code, Play, Search, X, AlertTriangle, Sparkles } from 'lucide-react';
 import { highlightSQL } from '@/lib/rdbms';
 import { cn } from '@/lib/utils';
 
@@ -428,13 +428,46 @@ export function findPrerequisiteQuery(errorMessage: string, attemptedQuery: stri
   return null;
 }
 
+// Quick templates generator based on active table
+const getQuickTemplates = (tableId: string): { name: string; sql: string }[] => {
+  const templates: Record<string, { name: string; sql: string }[]> = {
+    contacts: [
+      { name: 'View all', sql: 'SELECT * FROM contacts' },
+      { name: 'Search name', sql: "SELECT * FROM contacts WHERE name LIKE '%John%'" },
+      { name: 'Count', sql: 'SELECT COUNT(*) as total FROM contacts' },
+    ],
+    users: [
+      { name: 'View all', sql: 'SELECT * FROM users' },
+      { name: 'By city', sql: 'SELECT city, COUNT(*) as count FROM users GROUP BY city' },
+      { name: 'Avg age', sql: 'SELECT AVG(age) as avg_age FROM users' },
+    ],
+    products: [
+      { name: 'View all', sql: 'SELECT * FROM products' },
+      { name: 'Low stock', sql: 'SELECT * FROM products WHERE stock < 10' },
+      { name: 'By category', sql: 'SELECT category, COUNT(*) as count FROM products GROUP BY category' },
+    ],
+    orders: [
+      { name: 'View all', sql: 'SELECT * FROM orders' },
+      { name: 'By status', sql: 'SELECT status, COUNT(*) as count FROM orders GROUP BY status' },
+      { name: 'Revenue', sql: 'SELECT SUM(amount * quantity) as revenue FROM orders' },
+    ],
+    employees: [
+      { name: 'View all', sql: 'SELECT * FROM employees' },
+      { name: 'By dept', sql: 'SELECT department, COUNT(*) as count FROM employees GROUP BY department' },
+      { name: 'Salary stats', sql: 'SELECT AVG(salary) as avg, MIN(salary) as min, MAX(salary) as max FROM employees' },
+    ],
+  };
+  return templates[tableId] || [];
+};
+
 interface SampleQueriesProps {
   onSelectQuery: (query: string) => void;
   highlightQueryId?: string | null;
   onHighlightComplete?: () => void;
+  activeTable?: string;
 }
 
-export const SampleQueries = ({ onSelectQuery, highlightQueryId, onHighlightComplete }: SampleQueriesProps) => {
+export const SampleQueries = ({ onSelectQuery, highlightQueryId, onHighlightComplete, activeTable }: SampleQueriesProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [blinkingId, setBlinkingId] = useState<string | null>(null);
   const queryRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -513,6 +546,29 @@ export const SampleQueries = ({ onSelectQuery, highlightQueryId, onHighlightComp
       </CardHeader>
       <CardContent className="flex-1 min-h-0 overflow-hidden p-0">
         <ScrollArea className="h-full px-4 pb-4">
+          {/* Quick Templates Section */}
+          {activeTable && getQuickTemplates(activeTable).length > 0 && !searchTerm && (
+            <div className="mb-4 p-3 rounded-lg bg-primary/5 border border-primary/20">
+              <h4 className="text-xs font-mono text-primary mb-2 flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3" />
+                Quick: {activeTable}
+              </h4>
+              <div className="flex flex-wrap gap-1.5">
+                {getQuickTemplates(activeTable).map((template, idx) => (
+                  <Button
+                    key={idx}
+                    variant="outline"
+                    size="sm"
+                    className="text-[10px] font-mono h-6 px-2 hover:bg-primary/10"
+                    onClick={() => onSelectQuery(template.sql)}
+                  >
+                    {template.name}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+          
           {filteredQueries.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground font-mono text-sm">
               No matching queries found
