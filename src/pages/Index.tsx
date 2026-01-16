@@ -99,8 +99,9 @@ const Index = () => {
   return (
     <>
       <WelcomeTutorial onComplete={() => setShowTutorial(false)} />
-    <div className="h-screen flex flex-col bg-background text-foreground matrix-bg overflow-hidden">
-      {/* Header */}
+      <KeyboardShortcutsModal open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <div className="h-screen flex flex-col bg-background text-foreground matrix-bg overflow-hidden">
+        {/* Header */}
       <header className="border-b border-border/50 glass-card flex-shrink-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-14">
@@ -201,10 +202,11 @@ const Index = () => {
                 <SheetDescription>Select a query to run in the REPL</SheetDescription>
               </SheetHeader>
               <div className="mt-4 h-[calc(100%-4rem)]">
-                <SampleQueries 
+              <SampleQueries 
                   onSelectQuery={handleSelectQuery}
                   highlightQueryId={highlightedQueryId}
                   onHighlightComplete={handleHighlightComplete}
+                  activeTable={activeTableId}
                 />
               </div>
             </SheetContent>
@@ -280,7 +282,7 @@ const Index = () => {
                     onQueryError={handleQueryError}
                   />
                 ) : (
-                  <ContactManager />
+                  <DemoAppManager onTableChange={setActiveTableId} />
                 )}
               </FadeContent>
             </div>
@@ -324,6 +326,7 @@ const Index = () => {
                     onSelectQuery={handleSelectQuery}
                     highlightQueryId={highlightedQueryId}
                     onHighlightComplete={handleHighlightComplete}
+                    activeTable={activeTableId}
                   />
                 )}
                 {sidePanel === 'history' && <QueryHistory onSelectQuery={handleSelectQuery} />}
@@ -335,9 +338,10 @@ const Index = () => {
         </div>
       </main>
 
-      {/* Footer */}
-      <AppFooter />
-    </div>
+        {/* Footer */}
+        <AppFooter />
+      </div>
+    </>
   );
 };
 
