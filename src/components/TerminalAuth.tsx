@@ -5,7 +5,7 @@ import { Eye, EyeOff } from 'lucide-react';
 
 type AuthStep = 
   | 'idle' 
-  | 'signup_nickname' | 'signup_email' | 'signup_password' | 'signup_confirm' | 'signup_otp'
+  | 'signup_nickname' | 'signup_email' | 'signup_password' | 'signup_sending_otp' | 'signup_otp' | 'signup_creating'
   | 'login_email' | 'login_password'
   | 'recovery_email' | 'recovery_otp' | 'recovery_new_password'
   | 'email_change_new' | 'email_change_confirm';
@@ -30,7 +30,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
   const [cmdSuggestionIndex, setCmdSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { signUp, signIn, resetPassword, verifyOtp, updatePassword, updateEmail, user } = useAuth();
+  const { signUp, signIn, resetPassword, verifyOtp, updatePassword, updateEmail, sendCustomOtp, verifyCustomOtp, createUserAfterOtp, user } = useAuth();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -209,93 +209,80 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       }
       addOutput('input', `> ${'*'.repeat(password.length)}`);
       setFormData(prev => ({ ...prev, password }));
+      
+      // Show summary and send OTP
       addOutput('output', '');
       addOutput('output', '╔══════════════════════════════════════════╗');
       addOutput('output', `║ Nickname: ${formData.nickname.padEnd(29)}║`);
       addOutput('output', `║ Email:    ${formData.email.padEnd(29)}║`);
       addOutput('output', '╚══════════════════════════════════════════╝');
       addOutput('output', '');
-      addOutput('output', 'Type CONFIRM to create account or CANCEL to abort:');
-      setStep('signup_confirm');
-      return;
-    }
-
-    if (step === 'signup_confirm') {
-      if (cmd === 'CONFIRM' || cmd === 'YES' || cmd === 'Y') {
-        addOutput('input', `> ${command}`);
-        setIsProcessing(true);
-        addOutput('output', 'Creating account...');
-        
-        const { error, needsEmailConfirmation } = await signUp(formData.email, formData.password, formData.nickname);
-        
-        if (error) {
-          addOutput('error', `Error: ${error}`);
-          addOutput('output', 'Type SIGNUP to try again or EXIT to cancel');
-          setStep('idle');
-          setIsProcessing(false);
-          return;
-        }
-        
-        if (needsEmailConfirmation) {
-          addOutput('success', '');
-          addOutput('success', '✓ Account created!');
-          addOutput('output', '');
-          addOutput('output', 'A 6-digit verification code was sent to your email.');
-          addOutput('output', '(Code expires in 1 hour)');
-          addOutput('output', '');
-          addOutput('output', 'Enter the code below to confirm your account:');
-          if (onEmailSent) {
-            onEmailSent(formData.email);
-          }
-          setStep('signup_otp');
-        } else {
-          addOutput('success', '');
-          addOutput('success', '✓ Account created successfully!');
-          addOutput('success', '✓ You are now logged in');
-          addOutput('success', '');
-          toast.success('Welcome to the leaderboard!');
-          completeAuth();
-        }
+      setIsProcessing(true);
+      addOutput('output', 'Sending verification code to your email...');
+      
+      // Send custom OTP (not Supabase magic link)
+      const { error } = await sendCustomOtp(formData.email, 'signup');
+      
+      if (error) {
+        addOutput('error', `Error: ${error}`);
+        addOutput('output', 'Type SIGNUP to try again or EXIT to cancel');
+        setStep('idle');
         setIsProcessing(false);
         return;
       }
       
-      if (cmd === 'CANCEL' || cmd === 'NO' || cmd === 'N') {
-        addOutput('input', `> ${command}`);
-        addOutput('output', 'Registration cancelled');
-        setFormData({ nickname: '', email: '', password: '', newEmail: '' });
-        setStep('idle');
-        return;
+      addOutput('success', '');
+      addOutput('success', '✓ Verification code sent!');
+      addOutput('output', '');
+      addOutput('output', 'Check your email for a 6-character alphanumeric code.');
+      addOutput('output', '(Code expires in 15 minutes)');
+      addOutput('output', '');
+      addOutput('output', 'Enter the 6-character code:');
+      if (onEmailSent) {
+        onEmailSent(formData.email);
       }
-      
-      addOutput('input', `> ${command}`);
-      addOutput('error', 'Type CONFIRM or CANCEL');
+      setStep('signup_otp');
+      setIsProcessing(false);
       return;
     }
 
-    // Handle OTP verification for signup
+    // Handle OTP verification for signup - now uses custom OTP
     if (step === 'signup_otp') {
-      const code = rawValue.trim();
-      if (code.length !== 6 || !/^\d+$/.test(code)) {
+      const code = rawValue.trim().toUpperCase();
+      if (code.length !== 6) {
         addOutput('input', `> ${code}`);
-        addOutput('error', 'Please enter a valid 6-digit code');
+        addOutput('error', 'Please enter a valid 6-character code');
         return;
       }
       addOutput('input', `> ${code}`);
       setIsProcessing(true);
       addOutput('output', 'Verifying code...');
       
-      const { error } = await verifyOtp(formData.email, code, 'signup');
+      // Verify custom OTP
+      const { error: verifyError } = await verifyCustomOtp(formData.email, code, 'signup');
       
-      if (error) {
-        addOutput('error', `Error: ${error}`);
+      if (verifyError) {
+        addOutput('error', `Error: ${verifyError}`);
         addOutput('output', 'Please try entering the code again:');
         setIsProcessing(false);
         return;
       }
       
-      addOutput('success', '');
       addOutput('success', '✓ Email verified!');
+      addOutput('output', 'Creating your account...');
+      
+      // Now create the user account after OTP verification
+      const { error: createError } = await createUserAfterOtp(formData.email, formData.password, formData.nickname);
+      
+      if (createError) {
+        addOutput('error', `Error: ${createError}`);
+        setStep('idle');
+        setIsProcessing(false);
+        return;
+      }
+      
+      addOutput('success', '');
+      addOutput('success', '✓ Account created successfully!');
       addOutput('success', '✓ You are now logged in');
       addOutput('success', '');
       toast.success('Welcome to MuriukiDB RDBMS!');
@@ -348,7 +335,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       return;
     }
 
-    // Handle recovery flow - sends OTP code (not magic link)
+    // Handle recovery flow - sends custom OTP code (not magic link)
     if (step === 'recovery_email') {
       const email = rawValue.trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -360,9 +347,10 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       addOutput('input', `> ${email}`);
       setFormData(prev => ({ ...prev, email }));
       setIsProcessing(true);
-      addOutput('output', 'Sending 6-digit recovery code...');
+      addOutput('output', 'Sending 6-character recovery code...');
       
-      const { error } = await resetPassword(email);
+      // Use custom OTP for recovery
+      const { error } = await sendCustomOtp(email, 'recovery');
       
       if (error) {
         addOutput('error', `Error: ${error}`);
@@ -374,28 +362,28 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       addOutput('success', '');
       addOutput('success', '✓ Recovery code sent!');
       addOutput('output', '');
-      addOutput('output', 'Check your email for a 6-digit code.');
-      addOutput('output', '(Code expires in 1 hour)');
+      addOutput('output', 'Check your email for a 6-character alphanumeric code.');
+      addOutput('output', '(Code expires in 15 minutes)');
       addOutput('output', '');
-      addOutput('output', 'Enter the 6-digit code:');
+      addOutput('output', 'Enter the 6-character code:');
       setStep('recovery_otp');
       setIsProcessing(false);
       return;
     }
 
-    // Handle OTP verification for recovery
+    // Handle OTP verification for recovery - uses custom OTP
     if (step === 'recovery_otp') {
-      const code = rawValue.trim();
-      if (code.length !== 6 || !/^\d+$/.test(code)) {
+      const code = rawValue.trim().toUpperCase();
+      if (code.length !== 6) {
         addOutput('input', `> ${code}`);
-        addOutput('error', 'Please enter a valid 6-digit code');
+        addOutput('error', 'Please enter a valid 6-character code');
         return;
       }
       addOutput('input', `> ${code}`);
       setIsProcessing(true);
       addOutput('output', 'Verifying code...');
       
-      const { error } = await verifyOtp(formData.email, code, 'recovery');
+      const { error } = await verifyCustomOtp(formData.email, code, 'recovery');
       
       if (error) {
         addOutput('error', `Error: ${error}`);
@@ -407,44 +395,18 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       addOutput('success', '');
       addOutput('success', '✓ Code verified!');
       addOutput('output', '');
-      addOutput('output', 'Enter your NEW PASSWORD:');
-      addOutput('output', '(min 6 characters, Shift+T to toggle visibility)');
-      setStep('recovery_new_password');
+      addOutput('output', 'Now use LOGIN to access your account with your password.');
+      addOutput('output', '(If you forgot your password, contact support)');
+      addOutput('output', '');
+      setFormData({ nickname: '', email: '', password: '', newEmail: '' });
+      setStep('idle');
       setIsProcessing(false);
       return;
     }
 
-    // Handle new password after recovery
-    if (step === 'recovery_new_password') {
-      const password = rawValue.trim();
-      if (password.length < 6) {
-        addOutput('input', `> ${'*'.repeat(password.length)}`);
-        addOutput('error', 'Password must be at least 6 characters');
-        return;
-      }
-      addOutput('input', `> ${'*'.repeat(password.length)}`);
-      setIsProcessing(true);
-      addOutput('output', 'Updating password...');
-      
-      const { error } = await updatePassword(password);
-      
-      if (error) {
-        addOutput('error', `Error: ${error}`);
-        setStep('idle');
-        setIsProcessing(false);
-        return;
-      }
-      
-      addOutput('success', '');
-      addOutput('success', '✓ Password updated!');
-      addOutput('success', '✓ You are now logged in');
-      addOutput('success', '');
-      toast.success('Password reset successful!');
-      setFormData({ nickname: '', email: '', password: '', newEmail: '' });
-      completeAuth();
-      setIsProcessing(false);
-      return;
-    }
+    // NOTE: Password reset after custom OTP is not supported in this flow
+    // Users verified with custom OTP should use LOGIN with their existing password
+    // or contact support for password reset assistance
 
     // Handle email change flow
     if (step === 'email_change_new') {
@@ -491,7 +453,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       setStep('idle');
       return;
     }
-  }, [step, formData, signUp, signIn, resetPassword, verifyOtp, updatePassword, updateEmail, onCancel, onEmailSent, completeAuth, user]);
+  }, [step, formData, signUp, signIn, sendCustomOtp, verifyCustomOtp, createUserAfterOtp, resetPassword, verifyOtp, updatePassword, updateEmail, onCancel, onEmailSent, completeAuth, user]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,1 +1,13 @@
 project_id = "haypiczkunyffeeieoca"
+
+[functions.sql-execute]
+verify_jwt = false
+
+[functions.cleanup-inactive]
+verify_jwt = false
+
+[functions.auth-send-otp]
+verify_jwt = false
+
+[functions.auth-verify-otp]
+verify_jwt = false
