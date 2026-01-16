@@ -32,7 +32,7 @@ export function Leaderboard() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [myRank, setMyRank] = useState<number | null>(null);
   const [showAuth, setShowAuth] = useState(false);
-  const { stats, currentRank } = useGameStats();
+  const { stats, currentRank, migrateAnonymousStats } = useGameStats();
   const { userInfo } = useUserFingerprint();
   const { user, signOut } = useAuth();
 
@@ -76,7 +76,11 @@ export function Leaderboard() {
 
   useEffect(() => {
     fetchLeaderboard();
-  }, [user]);
+    // Migrate anonymous stats when user logs in
+    if (user) {
+      migrateAnonymousStats();
+    }
+  }, [user, migrateAnonymousStats]);
 
   // Server-side validation limits to prevent stats tampering
   const STATS_LIMITS = {
@@ -129,6 +133,9 @@ export function Leaderboard() {
       return;
     }
 
+    // Prevent double-click
+    if (syncing) return;
+
     // Validate stats before syncing to prevent tampering
     if (!validateStats(stats)) {
       console.warn('Stats validation failed - possible tampering detected');
@@ -137,20 +144,49 @@ export function Leaderboard() {
 
     setSyncing(true);
     try {
-      // Calculate validated level from XP (server-side verification)
-      const validatedLevel = Math.min(currentRank.level, STATS_LIMITS.MAX_LEVEL);
-      
+      // First, fetch current server stats to do a MERGE update (never reduce server values)
+      const { data: serverData, error: fetchError } = await supabase
+        .from('leaderboard')
+        .select('xp, level, queries_executed, tables_created, rows_inserted, badges, current_streak, highest_streak')
+        .eq('user_id', user.id)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      // Merge: take max of server and local for each metric
+      const serverStats = serverData || {
+        xp: 0,
+        level: 1,
+        queries_executed: 0,
+        tables_created: 0,
+        rows_inserted: 0,
+        badges: [],
+        current_streak: 0,
+        highest_streak: 0,
+      };
+
+      const mergedXp = Math.max(serverStats.xp, stats.xp);
+      const mergedLevel = Math.min(getRankInfo(mergedXp).level, STATS_LIMITS.MAX_LEVEL);
+      const mergedQueries = Math.max(serverStats.queries_executed, stats.queriesExecuted);
+      const mergedTables = Math.max(serverStats.tables_created, stats.tablesCreated);
+      const mergedRows = Math.max(serverStats.rows_inserted, stats.rowsInserted);
+      const mergedStreak = Math.max(serverStats.current_streak, stats.streak);
+      const mergedHighestStreak = Math.max(serverStats.highest_streak, stats.highestStreak);
+      const mergedBadges = Array.from(new Set([...(serverStats.badges || []), ...stats.badges])).slice(0, 50);
+
       const { error } = await supabase
         .from('leaderboard')
         .update({
-          xp: Math.min(stats.xp, STATS_LIMITS.MAX_XP),
-          level: validatedLevel,
-          queries_executed: Math.min(stats.queriesExecuted, STATS_LIMITS.MAX_QUERIES),
-          tables_created: Math.min(stats.tablesCreated, STATS_LIMITS.MAX_TABLES),
-          rows_inserted: Math.min(stats.rowsInserted, STATS_LIMITS.MAX_ROWS),
-          badges: stats.badges.slice(0, 50), // Limit badges array size
-          current_streak: Math.min(stats.streak, STATS_LIMITS.MAX_STREAK),
-          highest_streak: Math.min(stats.highestStreak, STATS_LIMITS.MAX_STREAK),
+          xp: Math.min(mergedXp, STATS_LIMITS.MAX_XP),
+          level: mergedLevel,
+          queries_executed: Math.min(mergedQueries, STATS_LIMITS.MAX_QUERIES),
+          tables_created: Math.min(mergedTables, STATS_LIMITS.MAX_TABLES),
+          rows_inserted: Math.min(mergedRows, STATS_LIMITS.MAX_ROWS),
+          badges: mergedBadges,
+          current_streak: Math.min(mergedStreak, STATS_LIMITS.MAX_STREAK),
+          highest_streak: Math.min(mergedHighestStreak, STATS_LIMITS.MAX_STREAK),
           last_seen: new Date().toISOString(),
         })
         .eq('user_id', user.id);
@@ -160,7 +196,11 @@ export function Leaderboard() {
       await fetchLeaderboard();
     } catch (error: any) {
       console.error('Error syncing stats:', error);
-      toast.error(error.message || 'Failed to sync stats');
+      if (error.message?.includes('401') || error.message?.includes('403')) {
+        toast.error('Session expired. Please login again.');
+      } else {
+        toast.error(error.message || 'Failed to sync stats');
+      }
     } finally {
       setSyncing(false);
     }
