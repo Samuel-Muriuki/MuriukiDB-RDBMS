@@ -17,12 +17,13 @@ export interface TourStep {
 interface UseTourOptions {
   steps: TourStep[];
   onComplete?: () => void;
+  onSkip?: () => void;
   storageKey?: string;
 }
 
 const DEFAULT_STORAGE_KEY = 'muriukidb-interactive-tour-completed';
 
-export function useTour({ steps, onComplete, storageKey = DEFAULT_STORAGE_KEY }: UseTourOptions) {
+export function useTour({ steps, onComplete, onSkip, storageKey = DEFAULT_STORAGE_KEY }: UseTourOptions) {
   const [isActive, setIsActive] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
@@ -72,8 +73,8 @@ export function useTour({ steps, onComplete, storageKey = DEFAULT_STORAGE_KEY }:
   const skip = useCallback(() => {
     markCompleted();
     setIsActive(false);
-    onComplete?.();
-  }, [markCompleted, onComplete]);
+    onSkip?.();
+  }, [markCompleted, onSkip]);
 
   const goToStep = useCallback((index: number) => {
     if (index >= 0 && index < steps.length) {
