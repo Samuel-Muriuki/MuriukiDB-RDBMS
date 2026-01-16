@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { GameStatsProvider } from "@/hooks/useGameStats";
 import { AuthProvider } from "@/hooks/useAuth";
+import { FeedbackProvider } from "@/contexts/FeedbackContext";
 import Index from "./pages/Index";
 import Achievements from "./pages/Achievements";
 import NotFound from "./pages/NotFound";
@@ -18,20 +19,22 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <GameStatsProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter>
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/achievements" element={<Achievements />} />
-                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </BrowserRouter>
-            </TooltipProvider>
-          </GameStatsProvider>
+          <FeedbackProvider>
+            <GameStatsProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <Routes>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/achievements" element={<Achievements />} />
+                    {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </BrowserRouter>
+              </TooltipProvider>
+            </GameStatsProvider>
+          </FeedbackProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>

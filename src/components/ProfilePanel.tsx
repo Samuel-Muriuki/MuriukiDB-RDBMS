@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useGameStats, getRankInfo } from '@/hooks/useGameStats';
+import { useFeedbackOptional } from '@/contexts/FeedbackContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { 
   User, Edit2, Save, X, Loader2, Trophy, Zap, 
-  Calendar, Flame, Target, Award, LogOut, AlertTriangle 
+  Calendar, Flame, Target, Award, LogOut, AlertTriangle,
+  Volume2, VolumeX
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FadeContent } from './animations/FadeContent';
@@ -33,6 +36,7 @@ interface LeaderboardEntry {
 export function ProfilePanel() {
   const { user, signOut } = useAuth();
   const { stats, currentRank, isCoolingDown, cooldownMultiplier } = useGameStats();
+  const feedback = useFeedbackOptional();
   const [profile, setProfile] = useState<LeaderboardEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -350,6 +354,25 @@ export function ProfilePanel() {
               <Award className="w-4 h-4 mx-auto mb-1 text-purple-400" />
               <p className="font-mono font-bold">{mergedHighestStreak}</p>
               <p className="text-[10px] text-muted-foreground">Best Streak</p>
+            </div>
+          </div>
+
+          {/* Sound Settings */}
+          <div className="space-y-2">
+            <Label className="text-xs font-mono text-muted-foreground">Sound Settings</Label>
+            <div className="flex items-center justify-between py-1 px-2 bg-secondary/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                {feedback?.sounds.enabled ? (
+                  <Volume2 className="w-4 h-4 text-primary" />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-muted-foreground" />
+                )}
+                <span className="text-sm font-mono">Sound Effects</span>
+              </div>
+              <Switch 
+                checked={feedback?.sounds.enabled ?? false} 
+                onCheckedChange={(v) => feedback?.sounds.setEnabled(v)} 
+              />
             </div>
           </div>
 
