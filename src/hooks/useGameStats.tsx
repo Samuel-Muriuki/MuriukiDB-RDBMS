@@ -1,4 +1,6 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
+import { getCachedUserId } from '@/lib/auth/sessionCache';
+import { getOrCreateSessionId } from '@/lib/rdbms/executor';
 
 interface PointEvent {
   amount: number;
@@ -29,6 +31,7 @@ interface GameStatsContextType {
   checkBadge: (badgeId: string) => boolean;
   isCoolingDown: boolean;
   cooldownMultiplier: number;
+  migrateAnonymousStats: () => void;
 }
 
 interface RankInfo {
@@ -132,26 +135,95 @@ const getRankInfo = (xp: number): RankInfo => {
   };
 };
 
-export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
-  const [stats, setStats] = useState<GameStats>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('muriukidb-stats');
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          // Ensure pointEvents and highestStreak exist for migration
-          return { 
-            ...defaultStats, 
-            ...parsed, 
-            pointEvents: parsed.pointEvents || [],
-            highestStreak: parsed.highestStreak ?? parsed.streak ?? 0
-          };
-        } catch {
-          return defaultStats;
-        }
+// Get storage key scoped by identity
+function getStorageKey(): string {
+  const userId = getCachedUserId();
+  if (userId) {
+    return `muriukidb-stats:user:${userId}`;
+  }
+  const sessionId = getOrCreateSessionId();
+  return `muriukidb-stats:session:${sessionId}`;
+}
+
+// Get the anonymous session key for migration
+function getAnonymousStorageKey(): string {
+  const sessionId = getOrCreateSessionId();
+  return `muriukidb-stats:session:${sessionId}`;
+}
+
+// Check if migration is already done
+function isMigrationDone(userId: string, sessionId: string): boolean {
+  const key = `muriukidb-migrated:${userId}:${sessionId}`;
+  return localStorage.getItem(key) === 'true';
+}
+
+// Mark migration as done
+function markMigrationDone(userId: string, sessionId: string): void {
+  const key = `muriukidb-migrated:${userId}:${sessionId}`;
+  localStorage.setItem(key, 'true');
+}
+
+// Load stats from storage
+function loadStats(key: string): GameStats {
+  if (typeof window === 'undefined') return defaultStats;
+  
+  const stored = localStorage.getItem(key);
+  if (!stored) {
+    // Try legacy key for backward compatibility
+    const legacy = localStorage.getItem('muriukidb-stats');
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy);
+        return { 
+          ...defaultStats, 
+          ...parsed, 
+          pointEvents: parsed.pointEvents || [],
+          highestStreak: parsed.highestStreak ?? parsed.streak ?? 0
+        };
+      } catch {
+        return defaultStats;
       }
     }
     return defaultStats;
+  }
+  
+  try {
+    const parsed = JSON.parse(stored);
+    return { 
+      ...defaultStats, 
+      ...parsed, 
+      pointEvents: parsed.pointEvents || [],
+      highestStreak: parsed.highestStreak ?? parsed.streak ?? 0
+    };
+  } catch {
+    return defaultStats;
+  }
+}
+
+// Merge two stats objects (take max for metrics, union for badges)
+function mergeStats(a: GameStats, b: GameStats): GameStats {
+  const allBadges = Array.from(new Set([...a.badges, ...b.badges]));
+  
+  return {
+    queriesExecuted: Math.max(a.queriesExecuted, b.queriesExecuted),
+    successfulQueries: Math.max(a.successfulQueries, b.successfulQueries),
+    tablesCreated: Math.max(a.tablesCreated, b.tablesCreated),
+    rowsInserted: Math.max(a.rowsInserted, b.rowsInserted),
+    xp: Math.max(a.xp, b.xp),
+    badges: allBadges,
+    streak: Math.max(a.streak, b.streak),
+    highestStreak: Math.max(a.highestStreak, b.highestStreak),
+    lastQueryDate: a.lastQueryDate && b.lastQueryDate 
+      ? (new Date(a.lastQueryDate) > new Date(b.lastQueryDate) ? a.lastQueryDate : b.lastQueryDate)
+      : (a.lastQueryDate || b.lastQueryDate),
+    pointEvents: [...a.pointEvents, ...b.pointEvents].slice(-100), // Keep last 100 events
+  };
+}
+
+export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
+  const [stats, setStats] = useState<GameStats>(() => {
+    const key = getStorageKey();
+    return loadStats(key);
   });
 
   const [currentRank, setCurrentRank] = useState<RankInfo>(() => getRankInfo(stats.xp));
@@ -166,14 +238,40 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
   const isCoolingDown = recentPoints >= FAST_GAIN_LIMIT;
   const cooldownMultiplier = isCoolingDown ? COOLDOWN_REDUCTION_FACTOR : 1;
 
+  // Save stats to the correct scoped key
   useEffect(() => {
-    localStorage.setItem('muriukidb-stats', JSON.stringify(stats));
+    const key = getStorageKey();
+    localStorage.setItem(key, JSON.stringify(stats));
     const newRank = getRankInfo(stats.xp);
     setCurrentRank(newRank);
     
     // Rank up notification handled elsewhere to avoid double state updates
     previousRankRef.current = newRank.id;
   }, [stats]);
+
+  // Migrate anonymous stats to user-scoped stats when user logs in
+  const migrateAnonymousStats = useCallback(() => {
+    const userId = getCachedUserId();
+    if (!userId) return;
+    
+    const sessionId = getOrCreateSessionId();
+    if (isMigrationDone(userId, sessionId)) return;
+    
+    const anonymousKey = getAnonymousStorageKey();
+    const userKey = `muriukidb-stats:user:${userId}`;
+    
+    const anonymousStats = loadStats(anonymousKey);
+    const userStats = loadStats(userKey);
+    
+    // Only merge if anonymous has any progress
+    if (anonymousStats.xp > 0 || anonymousStats.queriesExecuted > 0) {
+      const merged = mergeStats(userStats, anonymousStats);
+      setStats(merged);
+      localStorage.setItem(userKey, JSON.stringify(merged));
+    }
+    
+    markMigrationDone(userId, sessionId);
+  }, []);
 
   const addXP = useCallback((amount: number, reason: string): number => {
     if (amount <= 0) return 0;
@@ -311,7 +409,8 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
       incrementRowsInserted, 
       checkBadge,
       isCoolingDown,
-      cooldownMultiplier
+      cooldownMultiplier,
+      migrateAnonymousStats,
     }}>
       {children}
     </GameStatsContext.Provider>

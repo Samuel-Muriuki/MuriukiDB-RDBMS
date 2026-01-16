@@ -1,6 +1,8 @@
 import { useState, useEffect, createContext, useContext, ReactNode, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { User, Session } from '@supabase/supabase-js';
+import { User, Session, AuthChangeEvent } from '@supabase/supabase-js';
+import { initSessionCache } from '@/lib/auth/sessionCache';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
@@ -21,33 +23,69 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Events that should always be processed, never skipped
+const CRITICAL_EVENTS: AuthChangeEvent[] = ['SIGNED_OUT', 'TOKEN_REFRESHED'];
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  
   // Track if we just completed an auth action to prevent race conditions
+  // Only skip duplicate SIGNED_IN events, never skip critical events
   const justCompletedAuthRef = useRef(false);
+  const pendingAuthActionRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Initialize the global session cache
+    initSessionCache();
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        // Don't update state if we just completed an auth action
-        // This prevents the "bounce back" issue
-        if (justCompletedAuthRef.current) {
+      (event, newSession) => {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[AuthProvider] Auth event:', event, 'user:', newSession?.user?.id?.slice(0, 8));
+        }
+
+        // Always process critical events - never skip these
+        if (CRITICAL_EVENTS.includes(event)) {
+          setSession(newSession);
+          setUser(newSession?.user ?? null);
+          setLoading(false);
+          
+          // Show helpful message on token refresh failure
+          if (event === 'SIGNED_OUT' && pendingAuthActionRef.current === null) {
+            // Unexpected signout - might be rate limit
+            console.warn('[AuthProvider] Unexpected SIGNED_OUT event');
+          }
           return;
         }
-        setSession(session);
-        setUser(session?.user ?? null);
+
+        // For SIGNED_IN, check if we should skip due to recent auth action
+        if (event === 'SIGNED_IN' && justCompletedAuthRef.current) {
+          // Skip duplicate SIGNED_IN from our own action
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[AuthProvider] Skipping duplicate SIGNED_IN');
+          }
+          return;
+        }
+
+        // Process the event
+        setSession(newSession);
+        setUser(newSession?.user ?? null);
         setLoading(false);
       }
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      setSession(existingSession);
+      setUser(existingSession?.user ?? null);
       setLoading(false);
+    }).catch((error) => {
+      console.error('[AuthProvider] Error getting session:', error);
+      setLoading(false);
+      // Don't toast here - might be normal startup with no session
     });
 
     return () => subscription.unsubscribe();
