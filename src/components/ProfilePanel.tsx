@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   User, Edit2, Save, X, Loader2, Trophy, Zap, 
   Calendar, Flame, Target, Award, LogOut, AlertTriangle,
@@ -18,7 +19,6 @@ import {
 import { toast } from 'sonner';
 import { FadeContent } from './animations/FadeContent';
 import { TerminalAuth } from './TerminalAuth';
-
 interface LeaderboardEntry {
   id: string;
   nickname: string;
@@ -277,7 +277,8 @@ export function ProfilePanel() {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 min-h-0 overflow-auto scrollbar-thin">
+      <CardContent className="flex-1 min-h-0 overflow-hidden p-0">
+        <ScrollArea className="h-full px-6 pb-6">
         <FadeContent blur duration={300} className="space-y-4">
           {/* Nickname Section */}
           <div className="space-y-2">
@@ -366,18 +367,26 @@ export function ProfilePanel() {
                 </Button>
               </div>
             ) : (
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-sm text-muted-foreground truncate max-w-[180px]">
-                  {user?.email || 'No email set'}
-                </span>
-                <Button 
-                  size="icon" 
-                  variant="ghost" 
-                  onClick={() => setEditingEmail(true)}
-                  className="h-7 w-7"
-                >
-                  <Edit2 className="w-3 h-3" />
-                </Button>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm text-muted-foreground truncate max-w-[180px]">
+                    {user?.email || 'No email set'}
+                  </span>
+                  <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    onClick={() => setEditingEmail(true)}
+                    className="h-7 w-7"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                </div>
+                {user?.new_email && (
+                  <div className="flex items-center gap-1 text-[10px] text-yellow-500 font-mono">
+                    <AlertTriangle className="w-3 h-3" />
+                    Pending: {user.new_email} (check both inboxes)
+                  </div>
+                )}
               </div>
             )}
             <p className="text-[10px] text-muted-foreground">
@@ -487,6 +496,7 @@ export function ProfilePanel() {
             </p>
           )}
         </FadeContent>
+        </ScrollArea>
       </CardContent>
     </Card>
   );
