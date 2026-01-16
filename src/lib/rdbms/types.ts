@@ -84,12 +84,33 @@ export interface InsertNode {
   values: unknown[][];
 }
 
+// Aggregate function types
+export type AggregateFunction = 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+
+export interface AggregateExpression {
+  function: AggregateFunction;
+  column: string; // '*' for COUNT(*)
+  alias?: string;
+  distinct?: boolean; // For COUNT(DISTINCT column)
+}
+
+export interface SelectColumn {
+  name: string;
+  alias?: string;
+  aggregate?: AggregateExpression;
+  tableName?: string; // For qualified column names like users.name
+}
+
 export interface SelectNode {
   type: 'SELECT';
-  columns: string[] | '*';
+  columns: SelectColumn[] | '*';
   tableName: string;
+  tableAlias?: string;
+  distinct?: boolean;
   joins?: JoinClause[];
   where?: WhereClause;
+  groupBy?: string[];
+  having?: WhereClause;
   orderBy?: OrderByClause[];
   limit?: number;
   offset?: number;
@@ -136,10 +157,10 @@ export interface JoinClause {
 }
 
 export interface WhereClause {
-  operator: 'AND' | 'OR' | 'COMPARISON';
+  operator: 'AND' | 'OR' | 'COMPARISON' | 'NOT';
   left?: WhereClause | string;
   right?: WhereClause | unknown;
-  comparison?: '=' | '!=' | '<' | '>' | '<=' | '>=' | 'LIKE' | 'IS NULL' | 'IS NOT NULL';
+  comparison?: '=' | '!=' | '<' | '>' | '<=' | '>=' | 'LIKE' | 'NOT LIKE' | 'IS NULL' | 'IS NOT NULL';
 }
 
 export interface OrderByClause {

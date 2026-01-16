@@ -3,9 +3,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { Eye, EyeOff } from 'lucide-react';
 
-type AuthStep = 'idle' | 'signup_nickname' | 'signup_email' | 'signup_password' | 'signup_confirm' | 'signup_otp' |
-                'login_email' | 'login_password' |
-                'recovery_email' | 'recovery_otp' | 'recovery_new_password';
+type AuthStep = 
+  | 'idle' 
+  | 'signup_nickname' | 'signup_email' | 'signup_password' | 'signup_confirm' | 'signup_otp'
+  | 'login_email' | 'login_password'
+  | 'recovery_email' | 'recovery_otp' | 'recovery_new_password'
+  | 'email_change_new' | 'email_change_confirm';
 
 interface TerminalAuthProps {
   onComplete: () => void;
@@ -18,11 +21,12 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<Array<{ type: 'input' | 'output' | 'error' | 'success'; text: string }>>([]);
   const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({ nickname: '', email: '', password: '' });
+  const [formData, setFormData] = useState({ nickname: '', email: '', password: '', newEmail: '' });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [authCompleted, setAuthCompleted] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { signUp, signIn, resetPassword, verifyOtp, updatePassword, user } = useAuth();
+  const { signUp, signIn, resetPassword, verifyOtp, updatePassword, updateEmail, user } = useAuth();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -36,10 +40,10 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
     inputRef.current?.focus();
   }, [step]);
 
-  // Handle Shift+T for password toggle
+  // Handle Shift+T for password toggle and Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const isPasswordStep = step === 'signup_password' || step === 'login_password';
+      const isPasswordStep = step === 'signup_password' || step === 'login_password' || step === 'recovery_new_password';
 
       if (isPasswordStep && e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === 't') {
         e.preventDefault();
@@ -55,17 +59,23 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [step, onCancel]);
 
-  // If user is already logged in
+  // If user is already logged in (but only check once on mount, not during flow)
   useEffect(() => {
-    if (user) {
+    if (user && step === 'idle' && !authCompleted) {
       addOutput('success', `✓ Already authenticated as ${user.email}`);
+      setAuthCompleted(true);
       setTimeout(onComplete, 1000);
     }
-  }, [user, onComplete]);
+  }, [user, step, authCompleted, onComplete]);
 
   const addOutput = (type: 'input' | 'output' | 'error' | 'success', text: string) => {
     setHistory(prev => [...prev, { type, text }]);
   };
+
+  const completeAuth = useCallback(() => {
+    setAuthCompleted(true);
+    setTimeout(onComplete, 1500);
+  }, [onComplete]);
 
   const processCommand = useCallback(async (command: string) => {
     const cmd = command.trim().toUpperCase();
@@ -102,8 +112,27 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
         addOutput('output', '║         PASSWORD RECOVERY              ║');
         addOutput('output', '╚════════════════════════════════════════╝');
         addOutput('output', '');
-        addOutput('output', 'Enter your EMAIL to receive recovery code:');
+        addOutput('output', 'Enter your EMAIL to receive a recovery code:');
         setStep('recovery_email');
+        return;
+      }
+
+      if (cmd === 'EMAIL' || cmd === 'CHANGE-EMAIL') {
+        if (!user) {
+          addOutput('input', `> ${command}`);
+          addOutput('error', 'You must be logged in to change your email');
+          addOutput('output', 'Use LOGIN or SIGNUP first');
+          return;
+        }
+        addOutput('input', `> ${command}`);
+        addOutput('output', '╔════════════════════════════════════════╗');
+        addOutput('output', '║           EMAIL CHANGE                 ║');
+        addOutput('output', '╚════════════════════════════════════════╝');
+        addOutput('output', '');
+        addOutput('output', `Current email: ${user.email}`);
+        addOutput('output', '');
+        addOutput('output', 'Enter your NEW EMAIL address:');
+        setStep('email_change_new');
         return;
       }
       
@@ -119,6 +148,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
         addOutput('output', '  SIGNUP   - Create a new account');
         addOutput('output', '  LOGIN    - Sign in to existing account');
         addOutput('output', '  RECOVER  - Reset forgotten password');
+        addOutput('output', '  EMAIL    - Change your email address');
         addOutput('output', '  EXIT     - Cancel and return');
         addOutput('output', '');
         addOutput('output', 'Shortcuts:');
@@ -198,14 +228,18 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
           addOutput('error', `Error: ${error}`);
           addOutput('output', 'Type SIGNUP to try again or EXIT to cancel');
           setStep('idle');
-        } else if (needsEmailConfirmation) {
+          setIsProcessing(false);
+          return;
+        }
+        
+        if (needsEmailConfirmation) {
           addOutput('success', '');
           addOutput('success', '✓ Account created!');
           addOutput('output', '');
           addOutput('output', 'A 6-digit verification code was sent to your email.');
-          addOutput('output', 'Enter the code below to confirm your account:');
+          addOutput('output', '(Code expires in 1 hour)');
           addOutput('output', '');
-          // Notify parent about email sent
+          addOutput('output', 'Enter the code below to confirm your account:');
           if (onEmailSent) {
             onEmailSent(formData.email);
           }
@@ -216,7 +250,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
           addOutput('success', '✓ You are now logged in');
           addOutput('success', '');
           toast.success('Welcome to the leaderboard!');
-          setTimeout(onComplete, 1500);
+          completeAuth();
         }
         setIsProcessing(false);
         return;
@@ -225,7 +259,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       if (cmd === 'CANCEL' || cmd === 'NO' || cmd === 'N') {
         addOutput('input', `> ${command}`);
         addOutput('output', 'Registration cancelled');
-        setFormData({ nickname: '', email: '', password: '' });
+        setFormData({ nickname: '', email: '', password: '', newEmail: '' });
         setStep('idle');
         return;
       }
@@ -261,8 +295,8 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       addOutput('success', '✓ You are now logged in');
       addOutput('success', '');
       toast.success('Welcome to MuriukiDB RDBMS!');
-      setFormData({ nickname: '', email: '', password: '' });
-      setTimeout(onComplete, 1500);
+      setFormData({ nickname: '', email: '', password: '', newEmail: '' });
+      completeAuth();
       setIsProcessing(false);
       return;
     }
@@ -297,13 +331,15 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
         addOutput('error', `Error: ${error}`);
         addOutput('output', 'Type LOGIN to try again or RECOVER for password reset');
         setStep('idle');
-      } else {
-        addOutput('success', '');
-        addOutput('success', '✓ Authentication successful!');
-        addOutput('success', '');
-        toast.success('Welcome back!');
-        setTimeout(onComplete, 1500);
+        setIsProcessing(false);
+        return;
       }
+      
+      addOutput('success', '');
+      addOutput('success', '✓ Authentication successful!');
+      addOutput('success', '');
+      toast.success('Welcome back!');
+      completeAuth();
       setIsProcessing(false);
       return;
     }
@@ -327,14 +363,18 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       if (error) {
         addOutput('error', `Error: ${error}`);
         setStep('idle');
-      } else {
-        addOutput('success', '');
-        addOutput('success', '✓ Recovery code sent!');
-        addOutput('output', 'Check your inbox for the 6-digit code');
-        addOutput('output', 'Enter the code below:');
-        addOutput('output', '');
-        setStep('recovery_otp');
+        setIsProcessing(false);
+        return;
       }
+      
+      addOutput('success', '');
+      addOutput('success', '✓ Recovery code sent!');
+      addOutput('output', '');
+      addOutput('output', 'Check your inbox for the 6-digit code.');
+      addOutput('output', '(Code expires in 1 hour)');
+      addOutput('output', '');
+      addOutput('output', 'Enter the code below:');
+      setStep('recovery_otp');
       setIsProcessing(false);
       return;
     }
@@ -387,19 +427,67 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
       if (error) {
         addOutput('error', `Error: ${error}`);
         setStep('idle');
-      } else {
-        addOutput('success', '');
-        addOutput('success', '✓ Password updated!');
-        addOutput('success', '✓ You are now logged in');
-        addOutput('success', '');
-        toast.success('Password reset successful!');
-        setFormData({ nickname: '', email: '', password: '' });
-        setTimeout(onComplete, 1500);
+        setIsProcessing(false);
+        return;
       }
+      
+      addOutput('success', '');
+      addOutput('success', '✓ Password updated!');
+      addOutput('success', '✓ You are now logged in');
+      addOutput('success', '');
+      toast.success('Password reset successful!');
+      setFormData({ nickname: '', email: '', password: '', newEmail: '' });
+      completeAuth();
       setIsProcessing(false);
       return;
     }
-  }, [step, formData, signUp, signIn, resetPassword, verifyOtp, updatePassword, onComplete, onCancel, onEmailSent]);
+
+    // Handle email change flow
+    if (step === 'email_change_new') {
+      const newEmail = rawValue.trim();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(newEmail)) {
+        addOutput('input', `> ${newEmail}`);
+        addOutput('error', 'Invalid email format');
+        return;
+      }
+      addOutput('input', `> ${newEmail}`);
+      setFormData(prev => ({ ...prev, newEmail }));
+      setIsProcessing(true);
+      addOutput('output', 'Sending confirmation to new email...');
+      
+      const { error } = await updateEmail(newEmail);
+      
+      if (error) {
+        addOutput('error', `Error: ${error}`);
+        setStep('idle');
+        setIsProcessing(false);
+        return;
+      }
+      
+      addOutput('success', '');
+      addOutput('success', '✓ Confirmation email sent!');
+      addOutput('output', '');
+      addOutput('output', 'A confirmation link has been sent to your NEW email.');
+      addOutput('output', 'Click the link in the email to confirm the change.');
+      addOutput('output', '(Link expires in 24 hours)');
+      addOutput('output', '');
+      addOutput('output', 'Press ENTER or type DONE to continue:');
+      setStep('email_change_confirm');
+      setIsProcessing(false);
+      return;
+    }
+
+    if (step === 'email_change_confirm') {
+      addOutput('input', `> ${command}`);
+      addOutput('output', '');
+      addOutput('output', 'Email change pending confirmation.');
+      addOutput('output', 'Check your new email inbox and click the confirmation link.');
+      setFormData({ nickname: '', email: '', password: '', newEmail: '' });
+      setStep('idle');
+      return;
+    }
+  }, [step, formData, signUp, signIn, resetPassword, verifyOtp, updatePassword, updateEmail, onCancel, onEmailSent, completeAuth, user]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -431,6 +519,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
           <p className="text-xs ml-2">• SIGNUP  - Create new account</p>
           <p className="text-xs ml-2">• LOGIN   - Sign in to account</p>
           <p className="text-xs ml-2">• RECOVER - Reset password</p>
+          <p className="text-xs ml-2">• EMAIL   - Change email address</p>
           <p className="text-xs ml-2">• HELP    - Show all commands</p>
           <p className="text-xs ml-2">• EXIT    - Cancel</p>
         </div>
@@ -453,34 +542,33 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
         {/* Current input */}
         {!isProcessing && (
           <form onSubmit={handleSubmit} className="flex items-center gap-2 mt-2">
-            <span className="text-[hsl(var(--terminal-cyan))]">❯</span>
-            <input
-              ref={inputRef}
-              type={isPasswordField && !showPassword ? 'password' : 'text'}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              className="flex-1 bg-transparent border-none outline-none text-foreground font-mono min-w-0"
-              placeholder={step === 'idle' ? 'Enter command...' : ''}
-              autoComplete="off"
-              spellCheck={false}
-            />
+            <span className="text-[hsl(var(--terminal-green))] font-mono">{'>'}</span>
+            <div className="flex-1 relative">
+              <input
+                ref={inputRef}
+                type={isPasswordField && !showPassword ? 'password' : 'text'}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                className="w-full bg-transparent border-none outline-none font-mono text-foreground"
+                autoComplete="off"
+                spellCheck="false"
+              />
+            </div>
             {isPasswordField && (
               <button
                 type="button"
-                onClick={() => setShowPassword(prev => !prev)}
-                className="p-2 text-muted-foreground hover:text-foreground transition-colors touch-manipulation"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             )}
           </form>
         )}
-        
+
         {isProcessing && (
           <div className="flex items-center gap-2 mt-2 text-muted-foreground">
-            <span className="animate-pulse">⋯</span>
-            <span>Processing...</span>
+            <span className="animate-pulse">Processing...</span>
           </div>
         )}
       </div>
