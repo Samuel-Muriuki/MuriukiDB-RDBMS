@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { QueryExecutor, highlightSQL, QueryResult } from '@/lib/rdbms';
 import { useGameStats } from '@/hooks/useGameStats';
+import { useFeedbackOptional } from '@/contexts/FeedbackContext';
 import { toast } from 'sonner';
 import { DeleteConfirmDialog } from './DeleteConfirmDialog';
 
@@ -46,6 +47,7 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
   const outputRef = useRef<HTMLDivElement>(null);
   const executor = useRef(new QueryExecutor());
   const { addXP, incrementQueries, incrementTablesCreated, incrementRowsInserted } = useGameStats();
+  const feedback = useFeedbackOptional();
 
   // Get current word at cursor for autocomplete
   const getCurrentWord = useCallback((text: string, cursorPos: number) => {
@@ -173,15 +175,20 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
       if (result.success) {
         const upperQuery = query.toUpperCase();
         
+        // Play success/XP sounds
+        feedback?.sounds.playSuccess();
+        
         if (upperQuery.startsWith('CREATE TABLE')) {
           incrementTablesCreated();
           addXP(50, 'create_table');
           toast.success('+50 XP - Table created!', { duration: 2000 });
+          feedback?.sounds.playXP();
         } else if (upperQuery.startsWith('INSERT')) {
           const rowCount = result.rowCount || 1;
           incrementRowsInserted(rowCount);
           addXP(10 * rowCount, 'insert');
           toast.success(`+${10 * rowCount} XP - Data inserted!`, { duration: 2000 });
+          feedback?.sounds.playXP();
         } else if (upperQuery.startsWith('SELECT')) {
           addXP(5, 'select');
         } else if (upperQuery.startsWith('UPDATE') || upperQuery.startsWith('DELETE') || upperQuery.startsWith('DROP')) {
@@ -190,7 +197,8 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
           addXP(5, 'query');
         }
       } else {
-        // Notify parent of error for hint display
+        // Play error sound and notify parent for hint display
+        feedback?.sounds.playError();
         const errorMsg = result.message || result.error || 'Query failed';
         onQueryError?.(errorMsg, query);
       }
@@ -201,6 +209,7 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
         result: { success: false, message: errorMsg },
         timestamp: new Date(),
       }]);
+      feedback?.sounds.playError();
       incrementQueries(false);
       onQueryError?.(errorMsg, query);
     }

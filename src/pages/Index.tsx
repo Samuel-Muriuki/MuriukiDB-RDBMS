@@ -78,6 +78,9 @@ const Index = () => {
     onComplete: () => {
       toast.success('🎉 Tour complete! You\'re ready to master SQL!', { duration: 4000 });
     },
+    onSkip: () => {
+      toast.info('Tour paused. Click the ▶ icon anytime to restart!', { duration: 3000 });
+    },
   });
 
   // Handle auth errors from URL hash (e.g., expired email links)
