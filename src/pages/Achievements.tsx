@@ -12,6 +12,27 @@ import { DecryptedText } from '@/components/animations/DecryptedText';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { AppFooter } from '@/components/AppFooter';
 
+// Helper to split long rank names into top/bottom parts
+function splitRankName(name: string): { top: string | null; bottom: string } {
+  const words = name.split(' ');
+  if (words.length >= 3) {
+    // Split into two parts for 3+ word names
+    const midPoint = Math.ceil(words.length / 2);
+    return {
+      top: words.slice(0, midPoint).join(' '),
+      bottom: words.slice(midPoint).join(' '),
+    };
+  } else if (words.length === 2 && name.length > 12) {
+    // Split 2-word names if combined length is long
+    return {
+      top: words[0],
+      bottom: words[1],
+    };
+  }
+  // Single word or short name - just bottom
+  return { top: null, bottom: name };
+}
+
 export default function Achievements() {
   const { stats, currentRank, isCoolingDown, cooldownMultiplier } = useGameStats();
 
@@ -21,6 +42,8 @@ export default function Achievements() {
 
   // Find next major milestones
   const milestoneRanks = RANKS.filter(r => [4, 14, 17, 21, 23].includes(r.id)); // Sergeant, Captain, Colonel, General, CiC
+
+  const rankNameParts = splitRankName(currentRank.name);
 
   return (
     <div className="min-h-screen bg-background text-foreground matrix-bg">
@@ -55,8 +78,20 @@ export default function Achievements() {
             <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/10" />
             <CardContent className="relative p-6">
               <div className="flex flex-col md:flex-row items-center gap-6">
-                {/* Rank Circle */}
-                <div className="relative">
+                {/* Rank Circle with Top/Bottom Labels */}
+                <div className="relative flex flex-col items-center">
+                  {/* Top Label (for long names) */}
+                  {rankNameParts.top && (
+                    <div className={`mb-2 px-3 py-1 rounded-full border text-xs font-bold shadow-lg whitespace-nowrap ${
+                      currentRank.id >= 23 
+                        ? 'bg-background border-yellow-500/50 text-yellow-300' 
+                        : 'bg-background border-primary/50 text-primary'
+                    }`}>
+                      {rankNameParts.top}
+                    </div>
+                  )}
+                  
+                  {/* Circle */}
                   <div className={`w-32 h-32 rounded-full flex items-center justify-center border-4 glow-border ${
                     currentRank.id >= 23 
                       ? 'bg-gradient-to-br from-yellow-500/30 to-amber-500/30 border-yellow-500/50' 
@@ -67,12 +102,14 @@ export default function Achievements() {
                       <p className="text-xs text-foreground/80 font-semibold mt-1">RANK {currentRank.level}</p>
                     </div>
                   </div>
-                  <div className={`absolute -bottom-6 left-1/2 -translate-x-1/2 z-10 px-4 py-1.5 rounded-full border text-xs font-bold shadow-lg whitespace-nowrap ${
+                  
+                  {/* Bottom Label */}
+                  <div className={`mt-2 px-3 py-1 rounded-full border text-xs font-bold shadow-lg whitespace-nowrap ${
                     currentRank.id >= 23 
                       ? 'bg-background border-yellow-500/50 text-yellow-300' 
                       : 'bg-background border-primary/50 text-primary'
                   }`}>
-                    {currentRank.name}
+                    {rankNameParts.bottom}
                   </div>
                 </div>
 

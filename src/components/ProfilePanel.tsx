@@ -213,7 +213,16 @@ export function ProfilePanel() {
     );
   }
 
-  const rankInfo = profile ? getRankInfo(profile.xp) : currentRank;
+  // MERGED STATS: Always show max of local and server for consistency with navbar/achievements
+  const mergedXp = Math.max(profile?.xp || 0, stats.xp);
+  const mergedQueries = Math.max(profile?.queries_executed || 0, stats.queriesExecuted);
+  const mergedTables = Math.max(profile?.tables_created || 0, stats.tablesCreated);
+  const mergedStreak = Math.max(profile?.current_streak || 0, stats.streak);
+  const mergedHighestStreak = Math.max(profile?.highest_streak || 0, stats.highestStreak);
+  const mergedBadges = Array.from(new Set([...(profile?.badges || []), ...stats.badges]));
+
+  // Use merged XP for rank calculation
+  const rankInfo = getRankInfo(mergedXp);
 
   return (
     <Card className="glass-card border-primary/30">
@@ -282,7 +291,7 @@ export function ProfilePanel() {
             )}
           </div>
 
-          {/* Rank & XP */}
+          {/* Rank & XP - Using merged stats */}
           <div className="bg-secondary/30 rounded-lg p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -303,7 +312,7 @@ export function ProfilePanel() {
               <div className="flex items-center justify-between text-xs font-mono">
                 <span className="flex items-center gap-1">
                   <Zap className="w-3 h-3 text-yellow-400" />
-                  {(profile?.xp || stats.xp).toLocaleString()} XP
+                  {mergedXp.toLocaleString()} XP
                 </span>
                 {rankInfo.nextRankXp && (
                   <span className="text-muted-foreground">
@@ -320,36 +329,36 @@ export function ProfilePanel() {
             )}
           </div>
 
-          {/* Stats Grid */}
+          {/* Stats Grid - Using merged stats */}
           <div className="grid grid-cols-2 gap-2">
             <div className="bg-secondary/20 rounded-lg p-2 text-center">
               <Target className="w-4 h-4 mx-auto mb-1 text-primary" />
-              <p className="font-mono font-bold">{profile?.queries_executed || stats.queriesExecuted}</p>
+              <p className="font-mono font-bold">{mergedQueries}</p>
               <p className="text-[10px] text-muted-foreground">Queries</p>
             </div>
             <div className="bg-secondary/20 rounded-lg p-2 text-center">
               <Calendar className="w-4 h-4 mx-auto mb-1 text-green-400" />
-              <p className="font-mono font-bold">{profile?.tables_created || stats.tablesCreated}</p>
+              <p className="font-mono font-bold">{mergedTables}</p>
               <p className="text-[10px] text-muted-foreground">Tables</p>
             </div>
             <div className="bg-secondary/20 rounded-lg p-2 text-center">
               <Flame className="w-4 h-4 mx-auto mb-1 text-orange-400" />
-              <p className="font-mono font-bold">{profile?.current_streak || stats.streak}</p>
+              <p className="font-mono font-bold">{mergedStreak}</p>
               <p className="text-[10px] text-muted-foreground">Day Streak</p>
             </div>
             <div className="bg-secondary/20 rounded-lg p-2 text-center">
               <Award className="w-4 h-4 mx-auto mb-1 text-purple-400" />
-              <p className="font-mono font-bold">{profile?.highest_streak || stats.highestStreak}</p>
+              <p className="font-mono font-bold">{mergedHighestStreak}</p>
               <p className="text-[10px] text-muted-foreground">Best Streak</p>
             </div>
           </div>
 
-          {/* Badges */}
-          {(profile?.badges?.length || stats.badges.length > 0) && (
+          {/* Badges - Using merged badges */}
+          {mergedBadges.length > 0 && (
             <div className="space-y-2">
               <Label className="text-xs font-mono text-muted-foreground">Badges</Label>
               <div className="flex flex-wrap gap-1">
-                {(profile?.badges || stats.badges).map((badge) => (
+                {mergedBadges.map((badge) => (
                   <Badge key={badge} variant="outline" className="text-xs font-mono">
                     {badge}
                   </Badge>

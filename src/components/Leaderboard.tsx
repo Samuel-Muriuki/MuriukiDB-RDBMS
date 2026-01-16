@@ -2,10 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, Medal, Award, Crown, RefreshCw, User, Zap, Loader2, LogIn, LogOut } from 'lucide-react';
+import { Trophy, Medal, Award, Crown, RefreshCw, User, Zap, Loader2, LogIn, LogOut, AlertCircle } from 'lucide-react';
 import { useGameStats, BADGES, getRankInfo } from '@/hooks/useGameStats';
 import { useUserFingerprint } from '@/hooks/useUserFingerprint';
 import { useAuth } from '@/hooks/useAuth';
@@ -32,7 +31,7 @@ export function Leaderboard() {
   const [isRegistered, setIsRegistered] = useState(false);
   const [myRank, setMyRank] = useState<number | null>(null);
   const [showAuth, setShowAuth] = useState(false);
-  const { stats, currentRank, migrateAnonymousStats } = useGameStats();
+  const { stats, currentRank, migrateAnonymousStats, syncStatsToServer } = useGameStats();
   const { userInfo } = useUserFingerprint();
   const { user, signOut } = useAuth();
 
@@ -48,11 +47,12 @@ export function Leaderboard() {
       if (error) {
         console.error('Leaderboard fetch error:', error);
         // Retry on transient errors (406, network issues)
-        if (retryCount < 2 && (error.code === '406' || error.message?.includes('network'))) {
+        if (retryCount < 3 && (error.code === '406' || error.message?.includes('network') || error.code === 'PGRST301')) {
+          console.log(`[Leaderboard] Retrying fetch (attempt ${retryCount + 1})...`);
           setTimeout(() => fetchLeaderboard(retryCount + 1), 1000 * (retryCount + 1));
           return;
         }
-        setFetchError('Unable to load leaderboard. Try refreshing.');
+        setFetchError(`Unable to load leaderboard (${error.code || 'unknown error'}). Try refreshing.`);
         setEntries([]);
       } else if (data) {
         setEntries(data as LeaderboardEntry[]);
@@ -78,7 +78,7 @@ export function Leaderboard() {
       }
     } catch (error) {
       console.error('Error fetching leaderboard:', error);
-      if (retryCount < 2) {
+      if (retryCount < 3) {
         setTimeout(() => fetchLeaderboard(retryCount + 1), 1000 * (retryCount + 1));
         return;
       }
@@ -158,54 +158,7 @@ export function Leaderboard() {
 
     setSyncing(true);
     try {
-      // First, fetch current server stats to do a MERGE update (never reduce server values)
-      const { data: serverData, error: fetchError } = await supabase
-        .from('leaderboard')
-        .select('xp, level, queries_executed, tables_created, rows_inserted, badges, current_streak, highest_streak')
-        .eq('user_id', user.id)
-        .single();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        throw fetchError;
-      }
-
-      // Merge: take max of server and local for each metric
-      const serverStats = serverData || {
-        xp: 0,
-        level: 1,
-        queries_executed: 0,
-        tables_created: 0,
-        rows_inserted: 0,
-        badges: [],
-        current_streak: 0,
-        highest_streak: 0,
-      };
-
-      const mergedXp = Math.max(serverStats.xp, stats.xp);
-      const mergedLevel = Math.min(getRankInfo(mergedXp).level, STATS_LIMITS.MAX_LEVEL);
-      const mergedQueries = Math.max(serverStats.queries_executed, stats.queriesExecuted);
-      const mergedTables = Math.max(serverStats.tables_created, stats.tablesCreated);
-      const mergedRows = Math.max(serverStats.rows_inserted, stats.rowsInserted);
-      const mergedStreak = Math.max(serverStats.current_streak, stats.streak);
-      const mergedHighestStreak = Math.max(serverStats.highest_streak, stats.highestStreak);
-      const mergedBadges = Array.from(new Set([...(serverStats.badges || []), ...stats.badges])).slice(0, 50);
-
-      const { error } = await supabase
-        .from('leaderboard')
-        .update({
-          xp: Math.min(mergedXp, STATS_LIMITS.MAX_XP),
-          level: mergedLevel,
-          queries_executed: Math.min(mergedQueries, STATS_LIMITS.MAX_QUERIES),
-          tables_created: Math.min(mergedTables, STATS_LIMITS.MAX_TABLES),
-          rows_inserted: Math.min(mergedRows, STATS_LIMITS.MAX_ROWS),
-          badges: mergedBadges,
-          current_streak: Math.min(mergedStreak, STATS_LIMITS.MAX_STREAK),
-          highest_streak: Math.min(mergedHighestStreak, STATS_LIMITS.MAX_STREAK),
-          last_seen: new Date().toISOString(),
-        })
-        .eq('user_id', user.id);
-
-      if (error) throw error;
+      await syncStatsToServer();
       toast.success('Stats synced to leaderboard!');
       await fetchLeaderboard();
     } catch (error: any) {
@@ -301,6 +254,7 @@ export function Leaderboard() {
             </div>
           ) : fetchError ? (
             <div className="text-center py-8 space-y-3">
+              <AlertCircle className="w-8 h-8 text-destructive mx-auto" />
               <p className="text-destructive font-mono text-sm">{fetchError}</p>
               <Button variant="outline" size="sm" onClick={() => fetchLeaderboard(0)} className="font-mono text-xs">
                 <RefreshCw className="w-3 h-3 mr-1" />
