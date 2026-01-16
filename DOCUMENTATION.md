@@ -429,45 +429,6 @@ The `vercel.json` file handles client-side routing:
 
 ---
 
-## 🔐 Edge Functions
-
-### auth-send-otp
-
-Sends OTP verification codes via email using Resend.
-
-**Endpoint**: `POST /functions/v1/auth-send-otp`
-
-**Request Body**:
-```json
-{
-  "email": "user@example.com",
-  "purpose": "signup" | "recovery" | "email_change"
-}
-```
-
-**Features**:
-- Rate limited (1 code per 60 seconds)
-- 6-character alphanumeric codes
-- 15-minute expiration
-- Terminal-themed email templates
-
-### auth-verify-otp
-
-Verifies OTP codes submitted by users.
-
-**Endpoint**: `POST /functions/v1/auth-verify-otp`
-
-**Request Body**:
-```json
-{
-  "email": "user@example.com",
-  "code": "ABC123",
-  "purpose": "signup" | "recovery"
-}
-```
-
----
-
 ## 👨‍💻 Author
 
 **Samuel Muriuki**

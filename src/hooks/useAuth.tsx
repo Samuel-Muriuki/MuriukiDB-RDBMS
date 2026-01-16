@@ -17,9 +17,6 @@ interface AuthContextType {
   ) => Promise<{ error: string | null; needsEmailConfirmation?: boolean }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  sendCustomOtp: (email: string, purpose: 'signup' | 'recovery' | 'email_change') => Promise<{ error: string | null }>;
-  verifyCustomOtp: (email: string, code: string, purpose: 'signup' | 'recovery' | 'email_change') => Promise<{ error: string | null }>;
-  createUserAfterOtp: (email: string, password: string, nickname: string) => Promise<{ error: string | null }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   verifyOtp: (email: string, token: string, type: 'signup' | 'recovery' | 'email_change') => Promise<{ error: string | null }>;
   updatePassword: (newPassword: string) => Promise<{ error: string | null }>;
@@ -285,136 +282,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   }, []);
 
-  // Custom OTP - Send via our edge function (no magic links, pure 6-char code)
-  const sendCustomOtp = useCallback(async (
-    email: string,
-    purpose: 'signup' | 'recovery' | 'email_change'
-  ): Promise<{ error: string | null }> => {
-    try {
-      const trimmedEmail = email.trim().toLowerCase();
-      
-      if (!trimmedEmail) {
-        return { error: 'Email is required' };
-      }
-
-      const response = await supabase.functions.invoke('auth-send-otp', {
-        body: { email: trimmedEmail, purpose },
-      });
-
-      if (response.error) {
-        return { error: response.error.message || 'Failed to send verification code' };
-      }
-
-      if (response.data?.error) {
-        return { error: response.data.error };
-      }
-
-      return { error: null };
-    } catch (err: any) {
-      return { error: err.message || 'Failed to send verification code' };
-    }
-  }, []);
-
-  // Custom OTP - Verify via our edge function
-  const verifyCustomOtp = useCallback(async (
-    email: string,
-    code: string,
-    purpose: 'signup' | 'recovery' | 'email_change'
-  ): Promise<{ error: string | null }> => {
-    try {
-      const trimmedEmail = email.trim().toLowerCase();
-      const trimmedCode = code.trim().toUpperCase();
-      
-      if (!trimmedEmail || !trimmedCode) {
-        return { error: 'Email and code are required' };
-      }
-
-      const response = await supabase.functions.invoke('auth-verify-otp', {
-        body: { email: trimmedEmail, code: trimmedCode, purpose },
-      });
-
-      if (response.error) {
-        return { error: response.error.message || 'Failed to verify code' };
-      }
-
-      if (response.data?.error) {
-        return { error: response.data.error };
-      }
-
-      return { error: null };
-    } catch (err: any) {
-      return { error: err.message || 'Failed to verify code' };
-    }
-  }, []);
-
-  // Create user after OTP verification (for signup flow)
-  const createUserAfterOtp = useCallback(async (
-    email: string,
-    password: string,
-    nickname: string
-  ): Promise<{ error: string | null }> => {
-    try {
-      const trimmedEmail = email.trim().toLowerCase();
-      const trimmedPassword = password.trim();
-      const trimmedNickname = nickname.trim().replace(/\s+/g, ' ');
-
-      // Now create the user (auto-confirm should be enabled for this flow since OTP was verified)
-      const { data, error } = await supabase.auth.signUp({
-        email: trimmedEmail,
-        password: trimmedPassword,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            nickname: trimmedNickname,
-            email_verified: true, // Mark as verified since OTP was validated
-          },
-        },
-      });
-
-      if (error) {
-        if (error.message.includes('already registered')) {
-          return { error: 'Email already registered. Use LOGIN command.' };
-        }
-        return { error: error.message };
-      }
-
-      if (data.session && data.user) {
-        justCompletedAuthRef.current = true;
-        setSession(data.session);
-        setUser(data.user);
-
-        // Create leaderboard entry
-        const { data: existing } = await supabase
-          .from('leaderboard')
-          .select('id')
-          .eq('user_id', data.user.id)
-          .maybeSingle();
-
-        if (!existing) {
-          await supabase.from('leaderboard').insert({
-            nickname: trimmedNickname,
-            user_id: data.user.id,
-            xp: 0,
-            level: 1,
-            queries_executed: 0,
-            tables_created: 0,
-            rows_inserted: 0,
-            badges: [],
-            current_streak: 0,
-            highest_streak: 0,
-          });
-        }
-
-        setTimeout(() => {
-          justCompletedAuthRef.current = false;
-        }, 2000);
-      }
-
-      return { error: null };
-    } catch (err: any) {
-      return { error: err.message || 'Account creation failed' };
-    }
-  }, []);
 
   // Reset password using native Supabase email links
   const resetPassword = useCallback(async (email: string): Promise<{ error: string | null }> => {
@@ -573,9 +440,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       signUp,
       signIn,
       signOut,
-      sendCustomOtp,
-      verifyCustomOtp,
-      createUserAfterOtp,
       resetPassword,
       verifyOtp,
       updatePassword,
@@ -598,9 +462,6 @@ export const useAuth = () => {
       signUp: async () => ({ error: 'Auth not initialized' }),
       signIn: async () => ({ error: 'Auth not initialized' }),
       signOut: async () => {},
-      sendCustomOtp: async () => ({ error: 'Auth not initialized' }),
-      verifyCustomOtp: async () => ({ error: 'Auth not initialized' }),
-      createUserAfterOtp: async () => ({ error: 'Auth not initialized' }),
       resetPassword: async () => ({ error: 'Auth not initialized' }),
       verifyOtp: async () => ({ error: 'Auth not initialized' }),
       updatePassword: async () => ({ error: 'Auth not initialized' }),
