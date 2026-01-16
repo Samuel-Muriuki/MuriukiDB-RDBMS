@@ -16,6 +16,9 @@ interface TerminalAuthProps {
   onEmailSent?: (email: string) => void;
 }
 
+// Terminal commands for autocomplete
+const TERMINAL_COMMANDS = ['SIGNUP', 'LOGIN', 'RECOVER', 'EMAIL', 'HELP', 'EXIT'];
+
 export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuthProps) {
   const [step, setStep] = useState<AuthStep>('idle');
   const [input, setInput] = useState('');
@@ -24,6 +27,7 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
   const [formData, setFormData] = useState({ nickname: '', email: '', password: '', newEmail: '' });
   const [isProcessing, setIsProcessing] = useState(false);
   const [authCompleted, setAuthCompleted] = useState(false);
+  const [cmdSuggestionIndex, setCmdSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { signUp, signIn, resetPassword, verifyOtp, updatePassword, updateEmail, user } = useAuth();
@@ -548,10 +552,32 @@ export function TerminalAuth({ onComplete, onCancel, onEmailSent }: TerminalAuth
                 ref={inputRef}
                 type={isPasswordField && !showPassword ? 'password' : 'text'}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  setCmdSuggestionIndex(-1);
+                }}
+                onKeyDown={(e) => {
+                  // Tab autocomplete for commands in idle state
+                  if (e.key === 'Tab' && step === 'idle') {
+                    e.preventDefault();
+                    const upperInput = input.toUpperCase();
+                    const matches = TERMINAL_COMMANDS.filter(cmd => 
+                      cmd.startsWith(upperInput) && cmd !== upperInput
+                    );
+                    
+                    if (matches.length === 1) {
+                      setInput(matches[0]);
+                    } else if (matches.length > 1) {
+                      const nextIdx = (cmdSuggestionIndex + 1) % matches.length;
+                      setCmdSuggestionIndex(nextIdx);
+                      setInput(matches[nextIdx]);
+                    }
+                  }
+                }}
                 className="w-full bg-transparent border-none outline-none font-mono text-foreground"
                 autoComplete="off"
                 spellCheck="false"
+                placeholder={step === 'idle' ? 'Type command... (Tab to autocomplete)' : ''}
               />
             </div>
             {isPasswordField && (

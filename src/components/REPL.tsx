@@ -19,6 +19,17 @@ interface REPLProps {
 // Tables that have special significance in the app
 const PROTECTED_TABLES = ['contacts'];
 
+// SQL keywords for autocomplete
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET',
+  'DELETE', 'CREATE', 'TABLE', 'DROP', 'ALTER', 'JOIN', 'LEFT', 'RIGHT',
+  'INNER', 'OUTER', 'ON', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET',
+  'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'AND', 'OR', 'NOT', 'NULL',
+  'AS', 'LIKE', 'IN', 'BETWEEN', 'IS', 'ASC', 'DESC', 'PRIMARY', 'KEY',
+  'INTEGER', 'TEXT', 'REAL', 'DATE', 'SHOW', 'TABLES', 'IF', 'EXISTS',
+  'AUTO_INCREMENT', 'DEFAULT', 'UNIQUE', 'DESCRIBE'
+];
+
 export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
   const [input, setInput] = useState('');
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -28,10 +39,27 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
   const [showDeleteWarning, setShowDeleteWarning] = useState(false);
   const [deleteWarningInfo, setDeleteWarningInfo] = useState({ title: '', description: '', warning: '' });
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestionIndex, setSuggestionIndex] = useState(-1);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const executor = useRef(new QueryExecutor());
   const { addXP, incrementQueries, incrementTablesCreated, incrementRowsInserted } = useGameStats();
+
+  // Get current word at cursor for autocomplete
+  const getCurrentWord = useCallback((text: string, cursorPos: number) => {
+    const beforeCursor = text.slice(0, cursorPos);
+    const match = beforeCursor.match(/[\w]+$/);
+    return { word: match ? match[0] : '', start: match ? cursorPos - match[0].length : cursorPos };
+  }, []);
+
+  // Generate suggestions based on current word
+  const getAutocompleteSuggestions = useCallback((word: string): string[] => {
+    if (!word || word.length < 2) return [];
+    const upperWord = word.toUpperCase();
+    return SQL_KEYWORDS.filter(kw => kw.startsWith(upperWord) && kw !== upperWord).slice(0, 6);
+  }, []);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -211,6 +239,66 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
   }, [pendingQuery, executeQueryInternal]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Tab autocomplete
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const cursorPos = inputRef.current?.selectionStart || 0;
+      const { word, start } = getCurrentWord(input, cursorPos);
+      const newSuggestions = getAutocompleteSuggestions(word);
+      
+      if (newSuggestions.length === 1) {
+        // Single match: autocomplete immediately
+        const newInput = input.slice(0, start) + newSuggestions[0] + ' ' + input.slice(cursorPos);
+        setInput(newInput);
+        setShowSuggestions(false);
+        onQueryChange?.(newInput);
+      } else if (newSuggestions.length > 1) {
+        if (showSuggestions && suggestionIndex >= 0) {
+          // Cycle through suggestions
+          const nextIndex = (suggestionIndex + 1) % newSuggestions.length;
+          setSuggestionIndex(nextIndex);
+        } else {
+          // Show suggestions dropdown
+          setSuggestions(newSuggestions);
+          setSuggestionIndex(0);
+          setShowSuggestions(true);
+        }
+      }
+      return;
+    }
+    
+    // Enter with suggestions visible: select current suggestion
+    if (e.key === 'Enter' && showSuggestions && suggestionIndex >= 0) {
+      e.preventDefault();
+      const cursorPos = inputRef.current?.selectionStart || 0;
+      const { start } = getCurrentWord(input, cursorPos);
+      const newInput = input.slice(0, start) + suggestions[suggestionIndex] + ' ' + input.slice(cursorPos);
+      setInput(newInput);
+      setShowSuggestions(false);
+      setSuggestionIndex(-1);
+      onQueryChange?.(newInput);
+      return;
+    }
+    
+    // Escape: hide suggestions
+    if (e.key === 'Escape') {
+      if (showSuggestions) {
+        e.preventDefault();
+        setShowSuggestions(false);
+        setSuggestionIndex(-1);
+        return;
+      }
+      setInput('');
+      onQueryChange?.('');
+      return;
+    }
+    
+    // Hide suggestions on other keys
+    if (showSuggestions && !['ArrowUp', 'ArrowDown'].includes(e.key)) {
+      setShowSuggestions(false);
+      setSuggestionIndex(-1);
+    }
+    
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       executeQuery();
@@ -333,15 +421,51 @@ export function REPL({ initialQuery, onQueryChange, onQueryError }: REPLProps) {
               onChange={(e) => {
                 setInput(e.target.value);
                 onQueryChange?.(e.target.value);
+                // Update suggestions as user types
+                const cursorPos = e.target.selectionStart || 0;
+                const { word } = getCurrentWord(e.target.value, cursorPos);
+                const newSuggestions = getAutocompleteSuggestions(word);
+                if (newSuggestions.length > 0 && word.length >= 2) {
+                  setSuggestions(newSuggestions);
+                } else {
+                  setShowSuggestions(false);
+                }
               }}
               onKeyDown={handleKeyDown}
               className="w-full bg-transparent border-none outline-none resize-none text-foreground font-mono"
               rows={Math.max(1, input.split('\n').length)}
-              placeholder="Enter SQL command..."
+              placeholder="Enter SQL command... (Tab to autocomplete)"
               disabled={isExecuting}
               spellCheck={false}
             />
-          {isExecuting && <span className="text-muted-foreground ml-2">Executing...</span>}
+            {/* Autocomplete dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 bottom-full mb-1 bg-secondary/95 backdrop-blur border border-border rounded-lg shadow-lg z-50 overflow-hidden min-w-[140px]">
+                {suggestions.map((suggestion, idx) => (
+                  <div
+                    key={suggestion}
+                    className={`px-3 py-1.5 text-xs font-mono cursor-pointer transition-colors ${
+                      idx === suggestionIndex ? 'bg-primary/20 text-primary' : 'hover:bg-primary/10'
+                    }`}
+                    onClick={() => {
+                      const cursorPos = inputRef.current?.selectionStart || 0;
+                      const { start } = getCurrentWord(input, cursorPos);
+                      const newInput = input.slice(0, start) + suggestion + ' ' + input.slice(cursorPos);
+                      setInput(newInput);
+                      setShowSuggestions(false);
+                      inputRef.current?.focus();
+                      onQueryChange?.(newInput);
+                    }}
+                  >
+                    {suggestion}
+                  </div>
+                ))}
+                <div className="px-3 py-1 text-[10px] text-muted-foreground border-t border-border/50 bg-secondary/50">
+                  Tab to cycle • Enter to select
+                </div>
+              </div>
+            )}
+            {isExecuting && <span className="text-muted-foreground ml-2">Executing...</span>}
           </div>
         </div>
       </div>
