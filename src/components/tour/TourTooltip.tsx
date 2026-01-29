@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Moon, Sun } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/hooks/useTheme';
 
 type Position = 'top' | 'bottom' | 'left' | 'right';
 
@@ -42,6 +43,7 @@ export function TourTooltip({
   const [tooltipPos, setTooltipPos] = useState<TooltipPosition | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const gap = 16;
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     const updatePosition = () => {
@@ -129,15 +131,30 @@ export function TourTooltip({
       }}
     >
       <Card className="glass-card border-primary/50 shadow-2xl animate-scale-in">
-        {/* Close button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onSkip}
-          className="absolute top-2 right-2 h-6 w-6 text-muted-foreground hover:text-foreground z-10"
-        >
-          <X className="w-4 h-4" />
-        </Button>
+        {/* Theme toggle and Close button */}
+        <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-3.5 h-3.5" />
+            ) : (
+              <Moon className="w-3.5 h-3.5" />
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onSkip}
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
 
         {/* Progress dots */}
         <div className="absolute top-3 left-3 flex gap-1">

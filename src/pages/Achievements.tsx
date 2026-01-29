@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useGameStats, BADGES, RANKS } from '@/hooks/useGameStats';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -34,7 +35,16 @@ function splitRankName(name: string): { top: string | null; bottom: string } {
 }
 
 export default function Achievements() {
-  const { stats, currentRank, isCoolingDown, cooldownMultiplier } = useGameStats();
+  const { stats, currentRank, isCoolingDown, cooldownMultiplier, syncStatsToServer } = useGameStats();
+
+  // Trigger a stats refresh when Achievements page mounts to ensure fresh data
+  useEffect(() => {
+    // Dispatch visibility event to trigger the fetchAndMergeServerStats in useGameStats
+    if (document.visibilityState === 'visible') {
+      const event = new Event('visibilitychange');
+      document.dispatchEvent(event);
+    }
+  }, []);
 
   const allBadges = Object.entries(BADGES);
   const earnedCount = stats.badges.length;

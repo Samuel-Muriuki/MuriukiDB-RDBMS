@@ -350,10 +350,53 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [stats]);
 
+  // Fetch fresh server data and merge with local state
+  const fetchAndMergeServerStats = useCallback(async () => {
+    const userId = getCachedUserId();
+    if (!userId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('leaderboard')
+        .select('xp, level, queries_executed, tables_created, rows_inserted, badges, current_streak, highest_streak')
+        .eq('user_id', userId)
+        .single();
+
+      if (!error && data) {
+        const serverStats: GameStats = {
+          ...defaultStats,
+          xp: data.xp || 0,
+          queriesExecuted: data.queries_executed || 0,
+          tablesCreated: data.tables_created || 0,
+          rowsInserted: data.rows_inserted || 0,
+          badges: data.badges || [],
+          streak: data.current_streak || 0,
+          highestStreak: data.highest_streak || 0,
+          lastQueryDate: null, // Server doesn't store this directly
+        };
+
+        // Merge server stats with local - this uses recency-based streak logic
+        setStats(prev => {
+          const merged = mergeStats(serverStats, prev);
+          // Only update if there's actually a difference
+          if (merged.xp !== prev.xp || merged.streak !== prev.streak || merged.queriesExecuted !== prev.queriesExecuted) {
+            return merged;
+          }
+          return prev;
+        });
+      }
+    } catch {
+      // Silent failure
+    }
+  }, []);
+
   // Background sync effect - runs periodically for authenticated users
   useEffect(() => {
     const userId = getCachedUserId();
     if (!userId) return;
+
+    // Fetch fresh data on mount
+    fetchAndMergeServerStats();
 
     // Schedule periodic sync
     const scheduleSync = () => {
@@ -368,10 +411,12 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
 
     scheduleSync();
 
-    // Also sync on visibility change (when user comes back to tab)
+    // On visibility change: FETCH fresh data first, then sync
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        syncStatsToServer();
+        fetchAndMergeServerStats();
+        // Sync local to server after a short delay
+        setTimeout(() => syncStatsToServer(), 500);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -382,7 +427,7 @@ export const GameStatsProvider = ({ children }: { children: ReactNode }) => {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [syncStatsToServer]);
+  }, [syncStatsToServer, fetchAndMergeServerStats]);
 
   // Migrate anonymous stats to user-scoped stats when user logs in
   // Also fetch server stats and merge to ensure header is in sync

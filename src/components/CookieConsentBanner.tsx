@@ -18,7 +18,7 @@ export function CookieConsentBanner() {
   const [showDetails, setShowDetails] = useState(false);
   const [customPrefs, setCustomPrefs] = useState<ConsentPreferences>({
     necessary: true,
-    analytics: false,
+    analytics: true,
     functional: true,
   });
 
