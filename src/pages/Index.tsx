@@ -353,6 +353,7 @@ const Index = () => {
             active={activeTab === 'contacts'} 
             onClick={() => setActiveTab('contacts')}
             icon={<Users className="w-3.5 h-3.5" />}
+            data-tour="demo-tab"
           >
             Demo App
           </TabButton>
