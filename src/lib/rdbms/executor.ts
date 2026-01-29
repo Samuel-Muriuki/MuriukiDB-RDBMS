@@ -34,7 +34,8 @@ export function getOrCreateSessionId(): string {
   // Use localStorage for persistence across browser sessions
   let sessionId = localStorage.getItem(SESSION_KEY);
   if (!sessionId) {
-    sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+    // Use cryptographically secure random generation
+    sessionId = crypto.randomUUID();
     localStorage.setItem(SESSION_KEY, sessionId);
   }
   return sessionId;
