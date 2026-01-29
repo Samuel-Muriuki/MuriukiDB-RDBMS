@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/hooks/useTheme";
 import { GameStatsProvider } from "@/hooks/useGameStats";
 import { AuthProvider } from "@/hooks/useAuth";
 import { FeedbackProvider } from "@/contexts/FeedbackContext";
+import { CookieConsentBanner } from "@/components/CookieConsentBanner";
 import Index from "./pages/Index";
 import Achievements from "./pages/Achievements";
 import NotFound from "./pages/NotFound";
@@ -32,6 +33,7 @@ const App = () => {
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </BrowserRouter>
+                <CookieConsentBanner />
               </TooltipProvider>
             </GameStatsProvider>
           </FeedbackProvider>
