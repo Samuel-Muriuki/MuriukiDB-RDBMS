@@ -32,7 +32,8 @@ A custom Relational Database Management System built for the **Pesapal Junior De
 - **Real-time Updates** - Live data synchronization
 - **Sound Effects** - Audio feedback for XP gains, achievements, and rank ups (Web Audio API)
 - **Interactive Tour** - Guided walkthrough with spotlight overlay
-- **PWA Support** - Install as a native app on mobile devices
+- **PWA Support** - Install as a native app with custom install prompt
+- **GDPR Compliance** - Cookie consent banner with analytics opt-in
 
 ## 🎮 Ranking System
 

@@ -12,6 +12,7 @@ import {
   FileText, Upload, Users, User, Package, ShoppingCart, Briefcase, Radio
 } from 'lucide-react';
 import { useGameStats } from '@/hooks/useGameStats';
+import { useFeedbackOptional } from '@/contexts/FeedbackContext';
 import { FadeContent } from '@/components/animations/FadeContent';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import { DynamicFormField } from '@/components/DynamicFormField';
@@ -66,6 +67,7 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
   const fileInputRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
   const { addXP, incrementRowsInserted } = useGameStats();
+  const feedback = useFeedbackOptional();
 
   // Current table config
   const tableConfig = useMemo(() => 
@@ -238,6 +240,8 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
         toast.success(`Added ${count} sample ${config.name.toLowerCase()}! +${count * 10} XP`);
         addXP(count * 10, 'sample_data');
         incrementRowsInserted(count);
+        feedback?.sounds.playXP();
+        feedback?.sounds.playSuccess();
       } else {
         // Fallback: try inserting one by one if batch fails
         let successCount = 0;
@@ -257,6 +261,8 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
           toast.success(`Added ${successCount} sample ${config.name.toLowerCase()}! +${successCount * 10} XP`);
           addXP(successCount * 10, 'sample_data');
           incrementRowsInserted(successCount);
+          feedback?.sounds.playXP();
+          feedback?.sounds.playSuccess();
         }
       }
     } catch {
@@ -336,6 +342,8 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
           toast.success(`${tableConfig.name.slice(0, -1)} added! +10 XP`);
           addXP(10, 'add_record');
           incrementRowsInserted(1);
+          feedback?.sounds.playXP();
+          feedback?.sounds.playSuccess();
           await fetchRecords();
         } else {
           toast.error(result.error || result.message || 'Insert failed');

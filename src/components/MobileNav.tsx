@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Menu, X, Play, Keyboard, Trophy, Github, LogIn, LogOut, User } from 'lucide-react';
+import { Menu, X, Play, Keyboard, Trophy, Github, LogIn, LogOut, User, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -19,6 +19,8 @@ interface MobileNavProps {
   onAuth: () => void;
   onSignOut: () => void;
   userNickname?: string;
+  isInstallable?: boolean;
+  onInstall?: () => void;
 }
 
 export function MobileNav({
@@ -29,6 +31,8 @@ export function MobileNav({
   onAuth,
   onSignOut,
   userNickname,
+  isInstallable,
+  onInstall,
 }: MobileNavProps) {
   const [open, setOpen] = useState(false);
 
@@ -102,6 +106,17 @@ export function MobileNav({
             external
             delay={3}
           />
+
+          {/* PWA Install Option */}
+          {isInstallable && onInstall && (
+            <NavItem
+              icon={<Download className="h-4 w-4" />}
+              label="Install App"
+              onClick={() => handleAction(onInstall)}
+              variant="primary"
+              delay={4}
+            />
+          )}
 
           <div className="my-2 border-t border-border/30" />
 

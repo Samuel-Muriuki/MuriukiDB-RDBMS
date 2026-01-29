@@ -8,6 +8,41 @@ MuriukiDB is a custom Relational Database Management System (RDBMS) built as a s
 
 ---
 
+## 🔄 Recent Updates
+
+### PWA Install, Streak Logic, XP/Sound Consistency, Mobile Nav & GDPR Consent
+
+**Commit:** `fix(app): PWA install, streak logic, XP/sound consistency, mobile nav, GDPR consent`
+
+#### Changes Made:
+
+1. **PWA Install Prompt** (`src/hooks/usePWAInstall.tsx`)
+   - Created hook to capture `beforeinstallprompt` event
+   - Shows install button in header when app is installable on mobile/desktop
+   - Detects standalone mode to hide button when already installed
+
+2. **Streak Logic Fix** (`src/hooks/useGameStats.tsx`)
+   - Fixed `mergeStats` to use streak from source with most recent `lastQueryDate`
+   - Streak now properly resets to 0 when a day is skipped
+   - Prevents stale streak data when syncing between local storage and server
+
+3. **XP & Sound Consistency** (`src/components/DemoAppManager.tsx`)
+   - Added `playXP()` and `playSuccess()` calls when XP is awarded in Demo App
+   - Matches REPL behavior for consistent audio/visual feedback
+
+4. **Mobile Navigation** (`src/components/MobileNav.tsx`, `src/pages/Index.tsx`)
+   - Integrated hamburger menu for small screens
+   - All hidden nav items now accessible via collapsible menu
+   - PWA install option included in mobile menu when available
+
+5. **Cookie Consent Banner** (`src/components/CookieConsentBanner.tsx`, `src/hooks/useCookieConsent.tsx`)
+   - GDPR-compliant consent mechanism with "Necessary Only" and "Accept All" options
+   - Three categories: Necessary (always on), Functional, Analytics
+   - Preferences stored with version control for automatic re-prompting on policy updates
+   - Customizable preferences panel with individual toggles
+
+---
+
 ## 🎯 Challenge Requirements Met
 
 | Requirement | Implementation |

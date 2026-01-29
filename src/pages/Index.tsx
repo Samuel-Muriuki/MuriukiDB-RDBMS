@@ -15,9 +15,12 @@ import { DecryptedText } from '@/components/animations/DecryptedText';
 import { KeyboardShortcutsModal, useKeyboardShortcuts } from '@/components/KeyboardShortcutsModal';
 import { WelcomeTutorial } from '@/components/WelcomeTutorial';
 import { TourSpotlight, TourTooltip } from '@/components/tour';
+import { MobileNav } from '@/components/MobileNav';
 import { useTour } from '@/hooks/useTour';
+import { usePWAInstall } from '@/hooks/usePWAInstall';
 import { TerminalAuth } from '@/components/TerminalAuth';
-import { Terminal, Users, Github, History, Code, Trophy, Award, User, Keyboard, Play } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Terminal, Users, Github, History, Code, Trophy, Award, User, Keyboard, Play, Download } from 'lucide-react';
 import { useUserFingerprint } from '@/hooks/useUserFingerprint';
 import { useAuth } from '@/hooks/useAuth';
 import { useGameStats } from '@/hooks/useGameStats';
@@ -71,6 +74,7 @@ const Index = () => {
   const { user, isRecoveryMode, clearRecoveryMode } = useAuth();
   const { migrateAnonymousStats } = useGameStats();
   const { isOpen: shortcutsOpen, setIsOpen: setShortcutsOpen } = useKeyboardShortcuts();
+  const { isInstallable, promptInstall } = usePWAInstall();
   
   // Interactive tour
   const tour = useTour({
@@ -267,6 +271,21 @@ const Index = () => {
 
             <div className="flex items-center gap-1 sm:gap-2">
               <GameStats />
+              {/* PWA Install Button - Desktop */}
+              {isInstallable && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
+                      onClick={promptInstall}
+                      className="hidden sm:block p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors animate-pulse" 
+                      title="Install App"
+                    >
+                      <Download className="w-4 sm:w-5 h-4 sm:h-5 text-primary" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Install App</TooltipContent>
+                </Tooltip>
+              )}
               <Link to="/achievements" data-tour="achievements-link">
                 <button className="p-1.5 sm:p-2 rounded-lg hover:bg-primary/20 transition-colors" title="Achievements">
                   <Award className="w-4 sm:w-5 h-4 sm:h-5 text-yellow-400" />
@@ -291,16 +310,30 @@ const Index = () => {
               >
                 <Keyboard className="w-4 sm:w-5 h-4 sm:h-5 text-muted-foreground" />
               </button>
-              <ThemeToggle />
+              <div className="hidden sm:block">
+                <ThemeToggle />
+              </div>
               <a 
                 href="https://github.com/Samuel-Muriuki" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-muted-foreground hover:text-primary transition-colors p-1.5"
+                className="text-muted-foreground hover:text-primary transition-colors p-1.5 hidden sm:block"
                 title="GitHub"
               >
                 <Github className="w-4 sm:w-5 h-4 sm:h-5" />
               </a>
+              {/* Mobile Nav - Hamburger menu for small screens */}
+              <MobileNav
+                onStartTour={() => tour.start()}
+                onOpenShortcuts={() => setShortcutsOpen(true)}
+                onOpenProfile={() => setProfileSheetOpen(true)}
+                isAuthenticated={!!user}
+                onAuth={() => setProfileSheetOpen(true)}
+                onSignOut={() => supabase.auth.signOut()}
+                userNickname={user?.user_metadata?.nickname}
+                isInstallable={isInstallable}
+                onInstall={promptInstall}
+              />
             </div>
           </div>
         </div>

@@ -206,12 +206,35 @@ function loadStats(key: string): GameStats {
 }
 
 // Merge two stats objects (take max for metrics, union for badges)
-// CRITICAL: Use pointEvents from the source with higher XP to prevent cooldown mismatch
+// CRITICAL: For streak, use the source with the MOST RECENT lastQueryDate
+// This ensures streak resets are respected when merging server/local data
 function mergeStats(a: GameStats, b: GameStats): GameStats {
   const allBadges = Array.from(new Set([...a.badges, ...b.badges]));
   
   // Determine which source has the higher XP - use that for pointEvents consistency
   const xpWinner = a.xp >= b.xp ? a : b;
+  
+  // For streak, use the source with the MOST RECENT lastQueryDate
+  // This ensures streak resets are respected when merging
+  let streakSource = a;
+  if (a.lastQueryDate && b.lastQueryDate) {
+    streakSource = new Date(a.lastQueryDate) > new Date(b.lastQueryDate) ? a : b;
+  } else if (b.lastQueryDate) {
+    streakSource = b;
+  }
+  
+  // Recalculate streak based on current date
+  const today = new Date().toDateString();
+  const yesterday = new Date(Date.now() - 86400000).toDateString();
+  let currentStreak = streakSource.streak;
+  
+  // If the most recent activity is not today or yesterday, streak is broken
+  if (streakSource.lastQueryDate && streakSource.lastQueryDate !== today) {
+    if (streakSource.lastQueryDate !== yesterday) {
+      // Streak is broken - reset to 0
+      currentStreak = 0;
+    }
+  }
   
   return {
     queriesExecuted: Math.max(a.queriesExecuted, b.queriesExecuted),
@@ -220,11 +243,9 @@ function mergeStats(a: GameStats, b: GameStats): GameStats {
     rowsInserted: Math.max(a.rowsInserted, b.rowsInserted),
     xp: Math.max(a.xp, b.xp),
     badges: allBadges,
-    streak: Math.max(a.streak, b.streak),
-    highestStreak: Math.max(a.highestStreak, b.highestStreak),
-    lastQueryDate: a.lastQueryDate && b.lastQueryDate 
-      ? (new Date(a.lastQueryDate) > new Date(b.lastQueryDate) ? a.lastQueryDate : b.lastQueryDate)
-      : (a.lastQueryDate || b.lastQueryDate),
+    streak: currentStreak,
+    highestStreak: Math.max(a.highestStreak, b.highestStreak, currentStreak),
+    lastQueryDate: streakSource.lastQueryDate,
     // Use pointEvents from XP winner only to prevent inflated cooldown calculations
     pointEvents: xpWinner.pointEvents.slice(-100),
   };
