@@ -308,8 +308,12 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
             : `${col.name} = '${value.replace(/'/g, "''")}'`;
         }).join(', ');
         
+        // Validate editingId as a safe integer
+        const safeId = Number.isInteger(editingId) ? editingId : parseInt(String(editingId), 10);
+        if (!Number.isFinite(safeId)) throw new Error('Invalid record ID');
+        
         const result = await executor.execute(
-          `UPDATE ${tableConfig.tableName} SET ${setParts} WHERE id = ${editingId}`
+          `UPDATE ${tableConfig.tableName} SET ${setParts} WHERE id = ${safeId}`
         );
         
         if (result.success) {
@@ -374,10 +378,17 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
   const confirmDelete = async () => {
     if (pendingDeleteId === null) return;
     
+    // Validate pendingDeleteId as a safe integer
+    const safeId = Number.isInteger(pendingDeleteId) ? pendingDeleteId : parseInt(String(pendingDeleteId), 10);
+    if (!Number.isFinite(safeId)) {
+      toast.error('Invalid record ID');
+      return;
+    }
+    
     setShowDeleteConfirm(false);
     setDeleting(true);
     try {
-      const result = await executor.execute(`DELETE FROM ${tableConfig.tableName} WHERE id = ${pendingDeleteId}`);
+      const result = await executor.execute(`DELETE FROM ${tableConfig.tableName} WHERE id = ${safeId}`);
       if (result.success) {
         setAllRecords(prev => prev.filter(r => r.id !== pendingDeleteId));
         setSelectedIds(prev => {
@@ -401,7 +412,11 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
     setBatchDeleting(true);
     try {
       for (const id of selectedIds) {
-        await executor.execute(`DELETE FROM ${tableConfig.tableName} WHERE id = ${id}`);
+        // Validate ID as a safe integer
+        const safeId = Number.isInteger(id) ? id : parseInt(String(id), 10);
+        if (!Number.isFinite(safeId)) continue;
+        
+        await executor.execute(`DELETE FROM ${tableConfig.tableName} WHERE id = ${safeId}`);
       }
       setAllRecords(prev => prev.filter(r => !selectedIds.has(r.id)));
       toast.success(`Deleted ${selectedIds.size} ${tableConfig.name.toLowerCase()}`);
@@ -440,7 +455,11 @@ export const DemoAppManager = ({ activeTableId = 'contacts', onTableChange }: De
       
       // Update each selected record
       for (const id of selectedIds) {
-        await executor.execute(`UPDATE ${tableConfig.tableName} SET ${setParts} WHERE id = ${id}`);
+        // Validate ID as a safe integer
+        const safeId = Number.isInteger(id) ? id : parseInt(String(id), 10);
+        if (!Number.isFinite(safeId)) continue;
+        
+        await executor.execute(`UPDATE ${tableConfig.tableName} SET ${setParts} WHERE id = ${safeId}`);
       }
       
       // Optimistic UI update

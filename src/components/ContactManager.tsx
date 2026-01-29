@@ -233,10 +233,14 @@ export const ContactManager = () => {
     setSaving(true);
     try {
       if (editingId !== null) {
+        // Validate editingId as a safe integer
+        const safeId = Number.isInteger(editingId) ? editingId : parseInt(String(editingId), 10);
+        if (!Number.isFinite(safeId)) throw new Error('Invalid contact ID');
+        
         const result = await executor.execute(`
           UPDATE contacts 
           SET name = '${formData.name}', email = '${formData.email}', phone = '${formData.phone}'
-          WHERE id = ${editingId}
+          WHERE id = ${safeId}
         `);
         
         if (result.success) {
@@ -288,10 +292,17 @@ export const ContactManager = () => {
   const confirmDelete = async () => {
     if (pendingDeleteId === null) return;
     
+    // Validate pendingDeleteId as a safe integer
+    const safeId = Number.isInteger(pendingDeleteId) ? pendingDeleteId : parseInt(String(pendingDeleteId), 10);
+    if (!Number.isFinite(safeId)) {
+      toast.error('Invalid contact ID');
+      return;
+    }
+    
     setShowDeleteConfirm(false);
     setDeleting(true);
     try {
-      const result = await executor.execute(`DELETE FROM contacts WHERE id = ${pendingDeleteId}`);
+      const result = await executor.execute(`DELETE FROM contacts WHERE id = ${safeId}`);
       if (result.success) {
         // Optimistic update
         setAllContacts(prev => prev.filter(c => c.id !== pendingDeleteId));
@@ -341,8 +352,12 @@ export const ContactManager = () => {
     setBatchUpdating(true);
     try {
       for (const id of selectedIds) {
+        // Validate ID as a safe integer
+        const safeId = Number.isInteger(id) ? id : parseInt(String(id), 10);
+        if (!Number.isFinite(safeId)) continue;
+        
         if (batchFormData.phone) {
-          await executor.execute(`UPDATE contacts SET phone = '${batchFormData.phone}' WHERE id = ${id}`);
+          await executor.execute(`UPDATE contacts SET phone = '${batchFormData.phone}' WHERE id = ${safeId}`);
         }
       }
       
@@ -377,7 +392,11 @@ export const ContactManager = () => {
     setBatchDeleting(true);
     try {
       for (const id of selectedIds) {
-        await executor.execute(`DELETE FROM contacts WHERE id = ${id}`);
+        // Validate ID as a safe integer
+        const safeId = Number.isInteger(id) ? id : parseInt(String(id), 10);
+        if (!Number.isFinite(safeId)) continue;
+        
+        await executor.execute(`DELETE FROM contacts WHERE id = ${safeId}`);
       }
       
       // Optimistic update
