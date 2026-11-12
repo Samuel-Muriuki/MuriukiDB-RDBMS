@@ -182,13 +182,18 @@ export class BTree<K> {
       const valueIndex = node.values[i].indexOf(rowId);
       if (valueIndex !== -1) {
         node.values[i].splice(valueIndex, 1);
-        
-        // If no more values for this key, remove the key
-        if (node.values[i].length === 0) {
+
+        // Only a leaf may drop the key outright. In an internal node the key is
+        // also the separator that decides which child a lookup descends into,
+        // and splicing it out leaves k keys beside k + 2 children, so every
+        // later lookup walks into the wrong subtree. Keep it as a separator
+        // with no rows instead - search, rangeSearch and getAll all read an
+        // empty row list as "this key is not here".
+        if (node.values[i].length === 0 && node.isLeaf) {
           node.keys.splice(i, 1);
           node.values.splice(i, 1);
         }
-        
+
         return true;
       }
       return false;
@@ -213,7 +218,10 @@ export class BTree<K> {
       if (!node.isLeaf && node.children[i]) {
         this.collectEntries(node.children[i], entries);
       }
-      entries.push({ key: node.keys[i], rowIds: [...node.values[i]] });
+      // A separator left behind by delete has no rows and is not an entry.
+      if (node.values[i].length > 0) {
+        entries.push({ key: node.keys[i], rowIds: [...node.values[i]] });
+      }
     }
     
     if (!node.isLeaf && node.children[node.keys.length]) {
