@@ -74,6 +74,21 @@ export class BTree<K> {
         }
       }
 
+      // A split promotes a key out of a leaf and into this node, so a key can
+      // live here rather than below. The separators either side of child i are
+      // keys[i - 1] and keys[i]; if the key matches one of them it belongs
+      // there, not in the subtree. Descending anyway writes a second copy into
+      // a leaf, and search then finds whichever comes first and reports only
+      // half the rows.
+      for (const j of [i, i - 1]) {
+        if (j >= 0 && j < node.keys.length && this.compare(key, node.keys[j]) === 0) {
+          if (!node.values[j].includes(rowId)) {
+            node.values[j].push(rowId);
+          }
+          return;
+        }
+      }
+
       this.insertNonFull(node.children[i], key, rowId);
     }
   }
