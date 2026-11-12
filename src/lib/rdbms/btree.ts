@@ -74,6 +74,21 @@ export class BTree<K> {
         }
       }
 
+      // A split promotes a key out of a leaf and into this node, so a key can
+      // live here rather than below. The separators either side of child i are
+      // keys[i - 1] and keys[i]; if the key matches one of them it belongs
+      // there, not in the subtree. Descending anyway writes a second copy into
+      // a leaf, and search then finds whichever comes first and reports only
+      // half the rows.
+      for (const j of [i, i - 1]) {
+        if (j >= 0 && j < node.keys.length && this.compare(key, node.keys[j]) === 0) {
+          if (!node.values[j].includes(rowId)) {
+            node.values[j].push(rowId);
+          }
+          return;
+        }
+      }
+
       this.insertNonFull(node.children[i], key, rowId);
     }
   }
@@ -167,13 +182,18 @@ export class BTree<K> {
       const valueIndex = node.values[i].indexOf(rowId);
       if (valueIndex !== -1) {
         node.values[i].splice(valueIndex, 1);
-        
-        // If no more values for this key, remove the key
-        if (node.values[i].length === 0) {
+
+        // Only a leaf may drop the key outright. In an internal node the key is
+        // also the separator that decides which child a lookup descends into,
+        // and splicing it out leaves k keys beside k + 2 children, so every
+        // later lookup walks into the wrong subtree. Keep it as a separator
+        // with no rows instead - search, rangeSearch and getAll all read an
+        // empty row list as "this key is not here".
+        if (node.values[i].length === 0 && node.isLeaf) {
           node.keys.splice(i, 1);
           node.values.splice(i, 1);
         }
-        
+
         return true;
       }
       return false;
@@ -198,7 +218,10 @@ export class BTree<K> {
       if (!node.isLeaf && node.children[i]) {
         this.collectEntries(node.children[i], entries);
       }
-      entries.push({ key: node.keys[i], rowIds: [...node.values[i]] });
+      // A separator left behind by delete has no rows and is not an entry.
+      if (node.values[i].length > 0) {
+        entries.push({ key: node.keys[i], rowIds: [...node.values[i]] });
+      }
     }
     
     if (!node.isLeaf && node.children[node.keys.length]) {
